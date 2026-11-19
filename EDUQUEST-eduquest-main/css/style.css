@@ -1034,7 +1034,7 @@
     stroke-width: 22px;
 }
 
-/* --- Personnage CSS (Magicien) --- */
+/* --- Personnage CSS (David Martinez — Edgerunners) --- */
 .character {
     position: absolute;
     z-index: 20;
@@ -1048,30 +1048,52 @@
     pointer-events: none;
 }
 
-/* Le corps sautille sur place en permanence */
+/* Le corps sautille sur place en permanence (avec halo Sandevistan) */
 .character-body {
     position: relative;
     width: 100%;
     height: 100%;
     animation: character-bounce 1.8s ease-in-out infinite;
+    filter: drop-shadow(-3px 0 0 rgba(0, 255, 170, 0.35))
+            drop-shadow(3px 0 0 rgba(0, 200, 255, 0.35));
 }
 
 .character-head {
     position: absolute;
-    bottom: 10px;
+    bottom: 14px;
     left: 50%;
     transform: translateX(-50%);
-    width: 34px;
-    height: 34px;
-    background: radial-gradient(circle at 40% 35%, #ffe0b2, #ffb74d); /* Peau */
-    border-radius: 50%;
-    border: 3px solid #e09540;
-    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.25);
+    width: 32px;
+    height: 30px;
+    background: radial-gradient(circle at 40% 35%, #f3c6a5, #d99b72); /* Peau */
+    border-radius: 45% 45% 50% 50%;
+    border: 2.5px solid #8d5531;
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35);
+    z-index: 3;
+}
+
+/* Lignes cyberware sur les joues de David */
+.character-head::before,
+.character-head::after {
+    content: "";
+    position: absolute;
+    top: 62%;
+    width: 5px;
+    height: 1.5px;
+    background: rgba(120, 65, 35, 0.75);
+}
+.character-head::before {
+    left: 2px;
+    transform: rotate(15deg);
+}
+.character-head::after {
+    right: 2px;
+    transform: rotate(-15deg);
 }
 
 .character-eyes {
     position: absolute;
-    top: 35%;
+    top: 38%;
     left: 50%;
     transform: translateX(-50%);
     display: flex;
@@ -1081,71 +1103,92 @@
 .eye {
     display: block;
     width: 5px;
-    height: 6px;
-    background: #2d1600;
-    border-radius: 50%;
+    height: 5px;
+    background: #3e1f0d;
+    border-top: 2px solid #1a0f08; /* Regard déterminé */
+    border-radius: 35% 35% 50% 50%;
     animation: blink 4s infinite; /* Clignement périodique */
 }
 
 .character-mouth {
     position: absolute;
-    bottom: 7px;
-    left: 50%;
-    transform: translateX(-50%);
+    bottom: 5px;
+    left: 52%;
+    transform: translateX(-50%) rotate(-6deg);
     width: 8px;
-    height: 4px;
-    background: #c75030;
-    border-radius: 0 0 50% 50%; /* Sourit */
+    height: 2.5px;
+    background: #fff;
+    border: 1px solid #7a3b1e;
+    border-radius: 1px 1px 4px 4px; /* Sourire confiant en coin */
 }
 
+/* Coiffure de David : undercut rasé + mèches brunes en épis sur le dessus */
 .character-hat {
     position: absolute;
-    bottom: 36px;
+    bottom: 39px;
     left: 50%;
-    transform: translateX(-50%);
-    width: 0; height: 0;
-    border-left: 18px solid transparent;
-    border-right: 18px solid transparent;
-    border-bottom: 30px solid #3949ab; /* Triangle bleu */
-    border-radius: 4px;
-    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+    transform: translateX(-50%) rotate(-5deg);
+    width: 30px;
+    height: 14px;
+    background: linear-gradient(135deg, #2d1b12 0%, #1a0f0a 100%);
+    border-radius: 60% 40% 20% 20% / 80% 70% 20% 20%;
+    border: 2px solid #120a06;
+    box-shadow:
+        -5px -2px 0 -1px #23140d,
+         5px -3px 0 -1px #23140d,
+         0px -5px 0 -1px #2d1b12;
+    z-index: 4;
 }
 
-.character-hat::before { /* Étoile sur le chapeau */
-    content: "⭐";
-    position: absolute;
-    top: 14px;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 10px;
-    filter: drop-shadow(0 0 3px rgba(255, 235, 59, 0.8));
-}
-
-.character-hat::after { /* Rebord du chapeau */
+/* Mèche rebelle avant */
+.character-hat::before {
     content: "";
     position: absolute;
-    top: 28px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 42px;
-    height: 8px;
-    background: linear-gradient(to bottom, #5c6bc0, #3949ab);
-    border-radius: 50%;
-    border: 2px solid #283593;
+    top: 4px;
+    left: 2px;
+    width: 10px;
+    height: 11px;
+    background: #23140d;
+    clip-path: polygon(0 0, 100% 0, 35% 100%);
 }
 
+/* Bandeau / côtés rasés (undercut) */
+.character-hat::after {
+    content: "";
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 32px;
+    height: 4px;
+    background: rgba(45, 27, 18, 0.55);
+    border-radius: 3px;
+    z-index: -1;
+}
+
+/* Veste jaune fluo d'Edgerunner avec col haut noir & bandes lumineuses cyan */
 .character-cape {
     position: absolute;
     bottom: -2px;
     left: 50%;
     transform: translateX(-50%);
-    width: 30px;
-    height: 18px;
-    background: linear-gradient(to bottom, #5c6bc0, #3949ab);
-    border-radius: 0 0 12px 12px;
-    border: 2px solid #283593;
-    border-top: none;
-    animation: cape-wave 2s ease-in-out infinite; /* Ondule au vent */
+    width: 36px;
+    height: 22px;
+    background:
+        /* T-shirt noir au centre + chaîne dorée */
+        radial-gradient(circle at 50% 42%, #ffd700 1.5px, transparent 2px),
+        linear-gradient(to right,
+            #ffea00 0%, #ffea00 32%,
+            #181a1f 32%, #181a1f 68%,
+            #ffea00 68%, #ffea00 100%);
+    border-radius: 6px 6px 10px 10px;
+    border: 2px solid #c7a500;
+    box-shadow:
+        0 -4px 0 1px #1c1e24, /* Col haut rembourré noir */
+        inset 0 2px 0 #00f0ff, /* Bande néon cyan sur les épaules */
+        0 2px 6px rgba(255, 234, 0, 0.35);
+    animation: cape-wave 2s ease-in-out infinite;
+    z-index: 2;
 }
 
 .character-shadow {
@@ -1572,18 +1615,17 @@
 
     .level-map { min-height: 100vh; }
 
-    /* Réduction du personnage */
+    /* Réduction du personnage (David Martinez) */
     .character { width: 40px; height: 56px; }
-    .character-head { width: 28px; height: 28px; }
+    .character-head { width: 26px; height: 25px; bottom: 12px; }
     .character-hat {
-        border-left: 14px solid transparent;
-        border-right: 14px solid transparent;
-        border-bottom: 24px solid #3949ab;
-        bottom: 30px;
+        width: 24px;
+        height: 11px;
+        bottom: 33px;
     }
-    .character-hat::after { width: 34px; height: 6px; top: 22px; }
-    .character-hat::before { font-size: 8px; top: 10px; }
-    .character-cape { width: 24px; height: 14px; }
+    .character-hat::after { width: 26px; height: 3px; top: 8px; }
+    .character-hat::before { width: 8px; height: 9px; top: 3px; }
+    .character-cape { width: 29px; height: 18px; }
 
     .modal { padding: 20px 16px; border-radius: 16px; width: calc(100% - 24px); max-height: 90vh; max-height: 90dvh; overscroll-behavior: contain; }
     .modal-stars-choice { flex-direction: column; }
