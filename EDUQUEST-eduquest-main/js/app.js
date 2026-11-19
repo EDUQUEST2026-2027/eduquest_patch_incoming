@@ -351,7 +351,7 @@ function applyFullscreenSetting() {
         // Support multi-navigateurs : requestFullscreen (standard), webkitRequestFullscreen (Safari), msRequestFullscreen (vieux IE/Edge)
         const request = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
         if (request) {
-            try { request.call(el); } catch (e) {} // Le try/catch évite une erreur si refusé
+            try { request.call(el); } catch (e) { } // Le try/catch évite une erreur si refusé
             return true;
         }
     }
@@ -445,7 +445,7 @@ let globalSoundEnabled = true;
 function initGlobalMusic() {
     globalSoundEnabled = getOption('sonsActifs') !== 'false';      // Défaut : activé
     const musicEnabled = getOption('musiqueActive') !== 'false';    // Défaut : activé
-    const savedVol     = getOption('volumeMusique');                 // Ex: '75'
+    const savedVol = getOption('volumeMusique');                 // Ex: '75'
 
     // Volume entre 0.0 et 1.0 (l'option est stockée entre 0 et 100)
     music.volume = savedVol ? (parseInt(savedVol) / 100) : 0.75;
@@ -604,15 +604,15 @@ function initAccueil() {
 function initConnexion() {
     /* --- Récupération des éléments HTML de la page login.html --- */
 
-    const googleLogin    = document.getElementById('googleLogin');    // Bouton connexion Google
-    const classicLogin   = document.getElementById('classicLogin');   // Bouton "Connexion" (email+mdp)
-    const registerBtn    = document.getElementById('registerBtn');    // Bouton "Créer un compte"
-    const logoutBtn      = document.getElementById('logoutBtn');      // Bouton "Se déconnecter"
-    const tabLogin       = document.getElementById('tabLogin');       // Onglet "Se connecter"
-    const tabRegister    = document.getElementById('tabRegister');    // Onglet "Créer un compte"
-    const panelLogin     = document.getElementById('panelLogin');     // Panneau du formulaire connexion
-    const panelRegister  = document.getElementById('panelRegister'); // Panneau du formulaire inscription
-    const userInfo       = document.getElementById('userInfo');       // Bloc "connecté en tant que"
+    const googleLogin = document.getElementById('googleLogin');    // Bouton connexion Google
+    const classicLogin = document.getElementById('classicLogin');   // Bouton "Connexion" (email+mdp)
+    const registerBtn = document.getElementById('registerBtn');    // Bouton "Créer un compte"
+    const logoutBtn = document.getElementById('logoutBtn');      // Bouton "Se déconnecter"
+    const tabLogin = document.getElementById('tabLogin');       // Onglet "Se connecter"
+    const tabRegister = document.getElementById('tabRegister');    // Onglet "Créer un compte"
+    const panelLogin = document.getElementById('panelLogin');     // Panneau du formulaire connexion
+    const panelRegister = document.getElementById('panelRegister'); // Panneau du formulaire inscription
+    const userInfo = document.getElementById('userInfo');       // Bloc "connecté en tant que"
     const userNameDisplay = document.getElementById('userNameDisplay'); // Texte du pseudo connecté
 
     /* --- Affichage conditionnel selon l'état de connexion --- */
@@ -650,7 +650,7 @@ function initConnexion() {
         tabLogin.addEventListener('click', () => {
             tabLogin.classList.add('active');
             tabRegister.classList.remove('active');
-            if (panelLogin)    panelLogin.hidden    = false; // Affiche le formulaire de connexion
+            if (panelLogin) panelLogin.hidden = false; // Affiche le formulaire de connexion
             if (panelRegister) panelRegister.hidden = true;  // Cache le formulaire d'inscription
         });
 
@@ -658,7 +658,7 @@ function initConnexion() {
             tabRegister.classList.add('active');
             tabLogin.classList.remove('active');
             if (panelRegister) panelRegister.hidden = false; // Affiche le formulaire d'inscription
-            if (panelLogin)    panelLogin.hidden    = true;  // Cache le formulaire de connexion
+            if (panelLogin) panelLogin.hidden = true;  // Cache le formulaire de connexion
         });
     }
 
@@ -688,7 +688,7 @@ function initConnexion() {
      */
     if (classicLogin) {
         classicLogin.addEventListener('click', async () => {
-            const email    = (document.getElementById('loginEmail')    || {}).value || '';
+            const email = (document.getElementById('loginEmail') || {}).value || '';
             const password = (document.getElementById('loginPassword') || {}).value || '';
 
             // Validation côté client (vérification rapide avant d'appeler DB)
@@ -705,8 +705,8 @@ function initConnexion() {
             classicLogin.disabled = false; // Réactive le bouton
             if (result.ok) {
                 showNotification('✓ Bienvenue, ' + result.username + ' !');
-                setTimeout(() => { 
-                    if(document.getElementById('modalLogin')) document.getElementById('modalLogin').hidden = true;
+                setTimeout(() => {
+                    if (document.getElementById('modalLogin')) document.getElementById('modalLogin').hidden = true;
                     window.location.reload();
                 }, 800);
             } else {
@@ -728,10 +728,10 @@ function initConnexion() {
      */
     if (registerBtn) {
         registerBtn.addEventListener('click', async () => {
-            const email    = (document.getElementById('regEmail')    || {}).value || '';
+            const email = (document.getElementById('regEmail') || {}).value || '';
             const username = (document.getElementById('regUsername') || {}).value || '';
             const password = (document.getElementById('regPassword') || {}).value || '';
-            const confirm  = (document.getElementById('regConfirm')  || {}).value || '';
+            const confirm = (document.getElementById('regConfirm') || {}).value || '';
 
             // Validations côté client
             if (!email || !username || !password || !confirm) {
@@ -755,8 +755,8 @@ function initConnexion() {
             registerBtn.disabled = false;
             if (result.ok) {
                 showNotification('✓ Compte créé ! Bienvenue, ' + result.username + ' !');
-                setTimeout(() => { 
-                    if(document.getElementById('modalLogin')) document.getElementById('modalLogin').hidden = true;
+                setTimeout(() => {
+                    if (document.getElementById('modalLogin')) document.getElementById('modalLogin').hidden = true;
                     window.location.reload();
                 }, 800);
             } else {
@@ -775,8 +775,8 @@ function initConnexion() {
             await DB.logout(); // Efface la session (locale ET serveur si API activée)
             showNotification('Déconnecté.');
             updateUserDisplay(); // Cache le bloc userInfo immédiatement
-            setTimeout(() => { 
-                if(document.getElementById('modalLogin')) document.getElementById('modalLogin').hidden = true;
+            setTimeout(() => {
+                if (document.getElementById('modalLogin')) document.getElementById('modalLogin').hidden = true;
                 window.location.reload();
             }, 600);
         });
@@ -788,16 +788,16 @@ function initConnexion() {
    ========================================================================== */
 function initOptions() {
     /* --- Récupération des éléments HTML de la page options.html --- */
-    const volumeMusique    = document.getElementById('volumeMusique');  // Slider 0-100
-    const volumeEffets     = document.getElementById('volumeEffets');   // Slider 0-100
-    const pleinEcran       = document.getElementById('pleinEcran');     // Checkbox plein écran
-    const sonsActifs       = document.getElementById('sonsActifs');     // Checkbox son global
-    const musiqueActive    = document.getElementById('musiqueActive');  // Checkbox musique
-    const effetsActifs     = document.getElementById('effetsActifs');   // Checkbox effets sonores
-    const saveOptionsBtn   = document.getElementById('saveOptions');    // Bouton "Sauvegarder"
-    const backButton       = document.getElementById('backButton');     // Bouton "Retour"
+    const volumeMusique = document.getElementById('volumeMusique');  // Slider 0-100
+    const volumeEffets = document.getElementById('volumeEffets');   // Slider 0-100
+    const pleinEcran = document.getElementById('pleinEcran');     // Checkbox plein écran
+    const sonsActifs = document.getElementById('sonsActifs');     // Checkbox son global
+    const musiqueActive = document.getElementById('musiqueActive');  // Checkbox musique
+    const effetsActifs = document.getElementById('effetsActifs');   // Checkbox effets sonores
+    const saveOptionsBtn = document.getElementById('saveOptions');    // Bouton "Sauvegarder"
+    const backButton = document.getElementById('backButton');     // Bouton "Retour"
     const particulesCheckbox = document.getElementById('particules');   // Checkbox particules
-    const ecoModeCheckbox    = document.getElementById('ecoMode');          // Checkbox Économie d'énergie
+    const ecoModeCheckbox = document.getElementById('ecoMode');          // Checkbox Économie d'énergie
     const animationsCheckbox = document.getElementById('animationsActives'); // Checkbox Animations esthétiques
     const modeChronoCheckbox = document.getElementById('modeChrono');    // Checkbox Mode Défi Chronométré
 
@@ -852,37 +852,37 @@ function initOptions() {
      *   - Les contrôles redeviennent interactifs
      */
     function updateSoundControlsState() {
-        const allActive       = sonsActifs.checked;
+        const allActive = sonsActifs.checked;
         const musiqueContainer = musiqueActive.closest('.checkbox-container');
-        const effetsContainer  = effetsActifs.closest('.checkbox-container');
+        const effetsContainer = effetsActifs.closest('.checkbox-container');
 
         if (!allActive) {
             // Mémorisation des états actuels avant désactivation
             musiqueActive.dataset.prevChecked = musiqueActive.checked;
-            effetsActifs.dataset.prevChecked  = effetsActifs.checked;
+            effetsActifs.dataset.prevChecked = effetsActifs.checked;
 
             // Désactivation visuelle et fonctionnelle
-            musiqueActive.checked  = false;
+            musiqueActive.checked = false;
             musiqueActive.disabled = true;
-            effetsActifs.checked   = false;
-            effetsActifs.disabled  = true;
+            effetsActifs.checked = false;
+            effetsActifs.disabled = true;
 
             // Application du style "grisé"
             if (musiqueContainer) musiqueContainer.classList.add('disabled');
-            if (effetsContainer)  effetsContainer.classList.add('disabled');
+            if (effetsContainer) effetsContainer.classList.add('disabled');
         } else {
             // Réactivation des contrôles
             musiqueActive.disabled = false;
-            effetsActifs.disabled  = false;
+            effetsActifs.disabled = false;
 
             // Restauration des états précédents
             // dataset.prevChecked est une string 'true'/'false', on compare à 'false'
             musiqueActive.checked = musiqueActive.dataset.prevChecked !== 'false';
-            effetsActifs.checked  = effetsActifs.dataset.prevChecked !== 'false';
+            effetsActifs.checked = effetsActifs.dataset.prevChecked !== 'false';
 
             // Retrait du style "grisé"
             if (musiqueContainer) musiqueContainer.classList.remove('disabled');
-            if (effetsContainer)  effetsContainer.classList.remove('disabled');
+            if (effetsContainer) effetsContainer.classList.remove('disabled');
         }
 
         // Mise à jour de la lecture musicale selon le nouvel état
@@ -901,14 +901,14 @@ function initOptions() {
     function chargerOptionsUI() {
         // Sliders (valeurs numériques de 0 à 100)
         volumeMusique.value = getOption('volumeMusique') || '75';
-        volumeEffets.value  = getOption('volumeEffets')  || '80';
+        volumeEffets.value = getOption('volumeEffets') || '80';
         updateVolumeMusique(); // Met à jour l'affichage et le volume réel
         updateVolumeEffets();  // Met à jour l'affichage
 
         // Checkboxes (booléens stockés en string)
         ['pleinEcran', 'particules', 'ecoMode', 'sonsActifs', 'musiqueActive', 'effetsActifs', 'modeChrono', 'animationsActives'].forEach(id => {
             const value = getOption(id);
-            const el    = document.getElementById(id);
+            const el = document.getElementById(id);
             if (!el) return;
             if (value !== null) {
                 el.checked = value === 'true'; // Convertit la string en booléen
@@ -926,7 +926,7 @@ function initOptions() {
         // avant d'appeler updateSoundControlsState() qui les efface
         if (!sonsActifs.checked) {
             musiqueActive.dataset.prevChecked = getOption('musiqueActive') || 'true';
-            effetsActifs.dataset.prevChecked  = getOption('effetsActifs')  || 'true';
+            effetsActifs.dataset.prevChecked = getOption('effetsActifs') || 'true';
         }
 
         // Application de la logique de désactivation si nécessaire
@@ -954,14 +954,14 @@ function initOptions() {
         if (pleinEcran.checked) {
             // Entrée en plein écran (multi-navigateur)
             const request = document.documentElement.requestFullscreen
-                         || document.documentElement.webkitRequestFullscreen
-                         || document.documentElement.msRequestFullscreen;
+                || document.documentElement.webkitRequestFullscreen
+                || document.documentElement.msRequestFullscreen;
             if (request) request.call(document.documentElement);
         } else {
             // Sortie du plein écran (multi-navigateur)
             const exit = document.exitFullscreen
-                      || document.webkitExitFullscreen
-                      || document.msExitFullscreen;
+                || document.webkitExitFullscreen
+                || document.msExitFullscreen;
             if (exit) exit.call(document);
         }
     });
@@ -1012,8 +1012,8 @@ function initOptions() {
         saveCurrentOptionsLocally();
         showNotification('⚙ Options sauvegardées !');
         // Retour à l'accueil après 1 seconde pour laisser le temps de voir la notification
-        setTimeout(() => { 
-            if(document.getElementById('modalOptions')) document.getElementById('modalOptions').hidden = true;
+        setTimeout(() => {
+            if (document.getElementById('modalOptions')) document.getElementById('modalOptions').hidden = true;
         }, 1000);
     });
 
@@ -1021,7 +1021,7 @@ function initOptions() {
     if (backButton) {
         backButton.addEventListener('click', () => {
             saveCurrentOptionsLocally(); // Sauvegarde automatique pour éviter la perte de configs
-            if(document.getElementById('modalOptions')) document.getElementById('modalOptions').hidden = true;
+            if (document.getElementById('modalOptions')) document.getElementById('modalOptions').hidden = true;
         });
     }
 
@@ -1266,7 +1266,7 @@ function getLessonHint(lesson, subjectId) {
     return "Lis attentivement l'énoncé et procède par élimination des réponses manifestement fausses.";
 }
 
-window._toggleQuizHint = function(btn) {
+window._toggleQuizHint = function (btn) {
     const parent = btn.closest('.dash-modal') || btn.closest('.modal') || btn.closest('#modal-quiz-zone') || document;
     const drawer = parent.querySelector('.dash-hint-drawer');
     if (!drawer) return;
@@ -1274,8 +1274,8 @@ window._toggleQuizHint = function(btn) {
     drawer.style.display = isHidden ? 'block' : 'none';
     btn.classList.toggle('active', isHidden);
     btn.setAttribute('aria-expanded', String(isHidden));
-    btn.innerHTML = isHidden 
-        ? `<span class="dash-hint-icon">💡</span> Masquer l'indice` 
+    btn.innerHTML = isHidden
+        ? `<span class="dash-hint-icon">💡</span> Masquer l'indice`
         : `<span class="dash-hint-icon">💡</span> Besoin d'un indice ?`;
 };
 
@@ -1323,7 +1323,7 @@ function initMap() {
     // Ex: map.html?matiere=Mathématiques&icon=maths.png
     const urlParams = new URLSearchParams(window.location.search);
     let subject = urlParams.get('matiere');
-    let icon    = urlParams.get('icon');
+    let icon = urlParams.get('icon');
 
     if (!subject) {
         const defaultSubject = (DASH_SUBJECTS && DASH_SUBJECTS[0]) ? DASH_SUBJECTS[0] : null;
@@ -1364,7 +1364,7 @@ function initMap() {
 
     /* --- Mise à jour des éléments visuels d'en-tête --- */
     const titleEl = document.querySelector('h1');          // Titre de la matière
-    const iconEl  = document.querySelector('.subject-icon'); // Icône de la matière
+    const iconEl = document.querySelector('.subject-icon'); // Icône de la matière
     if (titleEl) titleEl.textContent = subject;
 
     const mapGradeSelect = document.getElementById('mapGradeSelect');
@@ -1637,12 +1637,12 @@ function initMap() {
             // Petit délai pour que la transition CSS ait le temps de s'appliquer
             setTimeout(() => {
                 character.style.left = x + '%';
-                character.style.top  = y + 'px';
+                character.style.top = y + 'px';
             }, 100);
         } else {
             // Placement immédiat (ex: au chargement de la page)
             character.style.left = x + '%';
-            character.style.top  = y + 'px';
+            character.style.top = y + 'px';
         }
     }
 
@@ -1763,7 +1763,7 @@ function initMap() {
         if (currentModalLevel + 1 <= TOTAL_LEVELS) {
             progress.levels[currentModalLevel + 1].unlocked = true;
         }
-        
+
         const streakRes = (typeof DB !== 'undefined' && DB.recordLevelVictory) ? DB.recordLevelVictory() : { streak: 1, combo: 0, multiplier: 1.0 };
         const mult = (streakRes && streakRes.multiplier) || ((typeof DB !== 'undefined' && DB.getMultiplier) ? DB.getMultiplier() : 1.0);
         renderMapHeaderStreak();
@@ -1873,12 +1873,16 @@ function initMap() {
                 chronoBarEl = document.createElement('div');
                 chronoBarEl.id = 'map-chrono-bar-container';
                 chronoBarEl.style.cssText = 'width:100%; height:10px; background:#1c2430; border-radius:5px; margin-bottom:14px; overflow:hidden; position:relative; box-shadow:inset 0 1px 3px rgba(0,0,0,0.6); border:1px solid rgba(255,255,255,0.1);';
-                chronoBarEl.innerHTML = `
-                    <div id="map-chrono-bar" style="width:${Math.max(0, (window.mapQuizTimeRemaining / 30) * 100)}%; height:100%; background:linear-gradient(90deg, #ff4757, #ffa502); transition: width 1s linear;"></div>
-                    <span id="map-chrono-time-text" style="position:absolute; right:8px; top:50%; transform:translateY(-50%); font-family:'Rajdhani',monospace; font-weight:700; font-size:11px; color:#fff; text-shadow:0 1px 2px #000;">⏱ ${window.mapQuizTimeRemaining || 30}s</span>
-                `;
                 questionEl.parentNode.insertBefore(chronoBarEl, questionEl);
             }
+            const tRem = (typeof window.mapQuizTimeRemaining === 'number' && !isNaN(window.mapQuizTimeRemaining))
+                ? window.mapQuizTimeRemaining
+                : 30;
+            window.mapQuizTimeRemaining = tRem;
+            chronoBarEl.innerHTML = `
+                <div id="map-chrono-bar" style="width:${Math.max(0, (tRem / 30) * 100)}%; height:100%; background:linear-gradient(90deg, #ff4757, #ffa502); transition: width 1s linear;"></div>
+                <span id="map-chrono-time-text" style="position:absolute; right:8px; top:50%; transform:translateY(-50%); font-family:'Rajdhani',monospace; font-weight:700; font-size:11px; color:#fff; text-shadow:0 1px 2px #000;">⏱ ${Math.max(0, tRem)}s</span>
+            `;
         } else if (chronoBarEl) {
             chronoBarEl.remove();
         }
@@ -2018,18 +2022,20 @@ function initMap() {
                     try {
                         const { lesson, questionId } = await AiProvider.fetchQuestion(
                             carteSubject.id, currentModalLevel - 1, currentNiveau(), {
-                                variant: nextVariant,
-                                subject: carteSubject
-                            }
+                            variant: nextVariant,
+                            subject: carteSubject
+                        }
                         );
                         if (currentAttempt.variant !== nextVariant || modal.hidden) return;
                         currentAttempt.lesson = lesson;
                         currentAttempt.questionId = questionId;
                         currentAttempt.checking = false;
+                        window.mapQuizTimeRemaining = 30;
                         renderModalQuiz();
                     } catch (err) {
                         console.warn('[map retry] Erreur chargement variante', err);
                         currentAttempt.checking = false;
+                        window.mapQuizTimeRemaining = 30;
                         renderModalQuiz();
                     }
                 });
@@ -2107,6 +2113,7 @@ function initMap() {
                         attempt.lesson = lesson;
                         attempt.questionId = questionId;
                         attempt.checking = false;
+                        window.mapQuizTimeRemaining = 30;
                         renderModalQuiz();
                     })
                     .catch(err => {
@@ -2117,6 +2124,7 @@ function initMap() {
                         attempt.lesson = fallbackLesson;
                         attempt.questionId = null;
                         attempt.checking = false;
+                        window.mapQuizTimeRemaining = 30;
                         renderModalQuiz();
                     });
             } else {
@@ -2210,115 +2218,141 @@ function initMap() {
    ========================================================================== */
 /* ============ DONNÉES CONSTANTES ============ */
 const DASH_SKINS = [
-    { id: 'aurore',   name: 'Aurore Boréale',   color: '#4fd8c4', cost: 0 },
-    { id: 'robot',    name: 'Robot Assistant',  color: '#8fb8c9', img: 'Image/personnages/robot.webp', cost: 0 },
-    { id: 'or',       name: 'Comète Dorée',     color: '#c8a84b', cost: 60 },
-    { id: 'ametiste', name: 'Nova Améthyste',   color: '#b685f5', cost: 90 },
-    { id: 'rose',     name: 'Étoile Rose',      color: '#f58fc2', cost: 130 },
-    { id: 'braise',   name: 'Braise Cosmique',  color: '#f5714f', cost: 170 },
-    { id: 'neon',     name: 'Éclair Néon',      color: '#00ffcc', cost: 250 },
-    { id: 'magma',    name: 'Flamboiement Magma', color: '#ff3300', cost: 300 },
+    { id: 'aurore', name: 'Aurore Boréale', color: '#4fd8c4', cost: 0 },
+    { id: 'robot', name: 'Robot Assistant', color: '#8fb8c9', img: 'Image/personnages/robot.webp', cost: 0 },
+    { id: 'or', name: 'Comète Dorée', color: '#c8a84b', cost: 60 },
+    { id: 'ametiste', name: 'Nova Améthyste', color: '#b685f5', cost: 90 },
+    { id: 'rose', name: 'Étoile Rose', color: '#f58fc2', cost: 130 },
+    { id: 'braise', name: 'Braise Cosmique', color: '#f5714f', cost: 170 },
+    { id: 'neon', name: 'Éclair Néon', color: '#00ffcc', cost: 250 },
+    { id: 'magma', name: 'Flamboiement Magma', color: '#ff3300', cost: 300 },
     // Skins "personnage" (v2.2) — portraits au lieu d'un halo de couleur.
     // `color` reste renseigné : il sert de couleur de halo derrière le
     // portrait (voir renderHud/renderShop), le portrait lui-même vient de `img`.
-    { id: 'einstein',          name: 'Albert Einstein',     color: '#7fb3d5', img: 'Image/personnages/einstein.webp',          cost: 150 },
-    { id: 'marie-curie',       name: 'Marie Curie',         color: '#6bca82', img: 'Image/personnages/marie-curie.webp',       cost: 150 },
-    { id: 'christophe-colomb', name: 'Christophe Colomb',   color: '#c8a84b', img: 'Image/personnages/christophe-colomb.webp', cost: 200 },
-    { id: 'lovelace',          name: 'Ada Lovelace',        color: '#ff66b2', img: 'Image/personnages/lovelace.webp',          cost: 400 },
+    { id: 'einstein', name: 'Albert Einstein', color: '#7fb3d5', img: 'Image/personnages/einstein.webp', cost: 150 },
+    { id: 'marie-curie', name: 'Marie Curie', color: '#6bca82', img: 'Image/personnages/marie-curie.webp', cost: 150 },
+    { id: 'christophe-colomb', name: 'Christophe Colomb', color: '#c8a84b', img: 'Image/personnages/christophe-colomb.webp', cost: 200 },
+    { id: 'lovelace', name: 'Ada Lovelace', color: '#ff66b2', img: 'Image/personnages/lovelace.webp', cost: 400 },
 ];
 
 const RAW_DASH_SUBJECTS = [
-    { id: "maths", name: "Mathématiques", icon: "∑", lessons: [
-        { title: "Les fractions", q: "Combien font 1/2 + 1/4 ?", opts: ["3/6", "1/6", "3/4", "2/6"], correct: 2, exp: "Au même dénominateur (4) : 2/4 + 1/4 = 3/4." },
-        { title: "Le théorème de Pythagore", q: "Dans un triangle rectangle de côtés 3 et 4, quelle est la longueur de l'hypoténuse ?", opts: ["4,5", "7", "6", "5"], correct: 3, exp: "√(3² + 4²) = √25 = 5." },
-        { title: "Équations du 1er degré", q: "Résous 2x + 3 = 11. Que vaut x ?", opts: ["3", "5,5", "7", "4"], correct: 3, exp: "2x = 8, donc x = 4." },
-        { title: "Les probabilités", q: "On lance un dé à 6 faces. Quelle est la probabilité d'obtenir un nombre pair ?", opts: ["1/2", "1/3", "2/3", "1/6"], correct: 0, exp: "3 issues favorables (2,4,6) sur 6 : 3/6 = 1/2." },
-        { type: "drag_and_drop", title: "Calcul mental", q: "Associe chaque opération à son résultat.", items: ["7 × 8", "144 ÷ 12", "9²", "√81"], targets: ["56", "12", "81", "9"], pairs: { "7 × 8": "56", "144 ÷ 12": "12", "9²": "81", "√81": "9" }, exp: "7 × 8 = 56, 144 ÷ 12 = 12, 9² = 81, √81 = 9." },
-    ]},
-    { id: "francais", name: "Français", icon: "Aa", lessons: [
-        { title: "Les classes grammaticales", q: "Dans « Le chat noir dort », quel mot est un adjectif ?", opts: ["noir", "le", "chat", "dort"], correct: 0, exp: "« Noir » qualifie le nom « chat »." },
-        { title: "Le conditionnel", q: "Quelle est la terminaison du conditionnel présent à la 1ère personne du singulier pour « aimer » ?", opts: ["aimerais", "aimais", "aimerai", "aime"], correct: 0, exp: "Radical du futur + terminaisons de l'imparfait : j'aimerais." },
-        { title: "Les figures de style", q: "« Il pleut des cordes » est une :", opts: ["comparaison", "anaphore", "métaphore", "litote"], correct: 2, exp: "L'image remplace directement la réalité, sans outil de comparaison : c'est une métaphore." },
-        { type: "texte_a_choix", title: "L'argumentation", q: "Complète la phrase avec les connecteurs logiques appropriés.", textWithBlanks: "Il pleuvait des cordes, ___ nous sommes sortis ___ nous avions promis d'aider Marc.", choices: [["mais", "donc", "ainsi", "alors"], ["car", "pourtant", "cependant", "en effet"]], blanks: [["mais"], ["car"]], exp: "« Mais » marque l'opposition et « car » introduit la cause." },
-        { type: "texte_a_trous", title: "Accord du participe passé", q: "Complète la règle.", textWithBlanks: "Avec l'auxiliaire être, le participe passé s'accorde avec le ___ ; avec avoir, il ne s'accorde en général pas avec le ___.", blanks: [["sujet"], ["sujet"]], distractors: ["verbe", "complément", "adjectif"], exp: "Être → accord avec le sujet ; avoir → pas d'accord avec le sujet (sauf COD placé avant, hors programme ici)." },
-    ]},
-    { id: "physique", name: "Physique", icon: "⚛", lessons: [
-        { title: "Les états de la matière", q: "Comment appelle-t-on le passage direct de l'état solide à l'état gazeux ?", opts: ["condensation", "fusion", "évaporation", "sublimation"], correct: 3, exp: "La sublimation évite l'étape liquide." },
-        { title: "La tension électrique", q: "Quelle unité mesure la tension électrique ?", opts: ["le volt", "l'ohm", "le watt", "l'ampère"], correct: 0, exp: "Le volt (V) mesure la tension." },
-        { title: "Les atomes", q: "Combien de protons possède un atome d'hydrogène ?", opts: ["0", "2", "1", "8"], correct: 2, exp: "L'hydrogène a le numéro atomique 1." },
-        { title: "Les mélanges", q: "L'eau salée est un exemple de :", opts: ["mélange homogène", "solide", "corps pur", "mélange hétérogène"], correct: 0, exp: "Le sel est totalement dissous : on ne distingue plus les constituants." },
-        { type: "vrai_faux", title: "La lumière", q: "La lumière se déplace plus vite dans l'eau que dans le vide.", correct: false, exp: "Faux : la lumière est plus rapide dans le vide (≈300 000 km/s) que dans l'eau, où elle ralentit." },
-    ]},
-    { id: "chimie", name: "Chimie", icon: "🧪", lessons: [
-        { title: "Les états de l'eau", q: "Comment appelle-t-on le passage direct de l'état solide à l'état gazeux ?", opts: ["la sublimation", "la fusion", "la condensation", "la liquéfaction"], correct: 0, exp: "La sublimation transforme la glace directement en vapeur, sans passer par l'état liquide." },
-        { title: "Les atomes", q: "Que représente le numéro atomique Z d'un élément ?", opts: ["le nombre de protons du noyau", "le nombre de neutrons", "la masse totale de l'atome", "le nombre d'électrons perdus"], correct: 0, exp: "Z compte les protons : c'est lui qui définit l'élément chimique." },
-        { type: "vrai_faux", title: "Les acides", q: "Une solution acide a un pH inférieur à 7.", correct: true, exp: "Vrai : à 25 °C, pH < 7 = acide, pH = 7 = neutre, pH > 7 = basique." },
-        { type: "texte_a_choix", title: "La neutralisation", q: "Complète le bilan de la réaction.", textWithBlanks: "La réaction entre un acide et une base produit un ___ et de l'___.", choices: [["sel", "gaz", "métal", "précipité"], ["eau", "alcool", "huile", "air"]], blanks: [["sel"], ["eau"]], exp: "Acide + Base → Sel + Eau : c'est la réaction de neutralisation acido-basique." },
-        { type: "texte_a_trous", title: "La molécule d'eau", q: "Complète la formule de la molécule d'eau.", textWithBlanks: "La formule de l'eau est ___₂___ : deux atomes d'hydrogène pour un atome d'oxygène.", blanks: [["H"], ["O"]], distractors: ["C", "N", "Fe"], exp: "H₂O : deux hydrogènes (H) et un oxygène (O)." },
-    ]},
-    { id: "svt", name: "SVT", icon: "❦", lessons: [
-        { title: "La photosynthèse", q: "Quel gaz les plantes absorbent-elles lors de la photosynthèse ?", opts: ["le CO₂", "l'O₂", "l'hydrogène", "l'azote"], correct: 0, exp: "Le CO₂ est transformé en matière organique grâce à la lumière." },
-        { title: "Le système digestif", q: "Où débute la digestion des glucides ?", opts: ["dans la bouche", "dans l'estomac", "dans le foie", "dans l'intestin grêle"], correct: 0, exp: "La salive contient une enzyme qui amorce la digestion de l'amidon." },
-        { title: "La génétique", q: "L'ADN se trouve principalement dans :", opts: ["le cytoplasme", "la membrane", "le noyau de la cellule", "les ribosomes"], correct: 2, exp: "Le noyau protège et organise le matériel génétique." },
-        { title: "Les écosystèmes", q: "Un organisme qui se nourrit exclusivement de végétaux est un :", opts: ["décomposeur", "carnivore", "herbivore", "omnivore"], correct: 2, exp: "Par définition, un herbivore ne consomme que des végétaux." },
-        { type: "reponse_courte", title: "Le cœur", q: "Combien de cavités possède le cœur humain ?", accepted: ["4", "quatre"], exp: "Le cœur a 4 cavités : 2 oreillettes et 2 ventricules." },
-    ]},
-    { id: "techno", name: "Technologie", icon: "⚙", band: "college", lessons: [
-        { type: "texte_a_choix", title: "Les algorithmes", q: "Choisis les bons termes pour compléter la définition.", textWithBlanks: "Pour répéter des instructions tant qu'une condition est vraie, on utilise une boucle ___, et pour faire un choix, une condition ___.", choices: [["tant que", "pour", "infinie"], ["si", "sinon", "alors"]], blanks: [["tant que"], ["si"]], exp: "« Tant que » (while) et « si » (if) sont des structures fondamentales en programmation." },
-        { title: "Les capteurs", q: "Un capteur de température mesure :", opts: ["la pression", "la chaleur ambiante", "le son", "la lumière"], correct: 1, exp: "C'est sa fonction première : convertir une température en signal exploitable." },
-        { title: "Les matériaux", q: "Le PLA est un matériau souvent utilisé en :", opts: ["chauffage", "soudure", "impression 3D", "isolation électrique"], correct: 2, exp: "Le PLA est un plastique biodégradable très utilisé en fabrication additive." },
-        { title: "Les réseaux", q: "Le Wi-Fi fait référence à :", opts: ["un câble réseau", "un type de processeur", "une connexion sans fil", "un logiciel"], correct: 2, exp: "Le Wi-Fi permet une connexion réseau sans câble." },
-        { type: "drag_and_drop", title: "Composants électroniques", q: "Associe chaque composant à son rôle.", items: ["Résistance", "LED", "Capteur"], targets: ["Limite le courant", "Émet de la lumière", "Mesure une grandeur physique"], pairs: { "Résistance": "Limite le courant", LED: "Émet de la lumière", Capteur: "Mesure une grandeur physique" }, exp: "Chaque composant a une fonction précise dans un circuit." },
-    ]},
-    { id: "anglais", name: "Anglais", icon: "En", lessons: [
-        { title: "Present Perfect", q: "Choose the correct form: 'I ___ never been to London.'", opts: ["have", "having", "has", "had"], correct: 0, exp: "Subject 'I' + present perfect → 'have never been'." },
-        { title: "Vocabulaire du quotidien", q: "What does 'to look forward to' mean?", opts: ["chercher quelque chose", "attendre avec impatience", "regarder devant soi", "avancer"], correct: 1, exp: "Cette expression exprime une attente positive d'un événement." },
-        { title: "Comparatives", q: "'This book is ___ than the other one.'", opts: ["interesting", "more interesting", "most interesting", "interestinger"], correct: 1, exp: "Les adjectifs longs forment leur comparatif avec 'more'." },
-        { title: "Modal verbs", q: "Which modal expresses obligation?", opts: ["must", "could", "would", "might"], correct: 0, exp: "'Must' exprime une obligation forte." },
-        { type: "texte_a_trous", title: "Simple past", q: "Complète la phrase.", textWithBlanks: "Yesterday, she ___ (go) to the cinema and ___ (watch) a great film.", blanks: [["went"], ["watched"]], distractors: ["gone", "goes", "watches", "watching"], exp: "'Go' est irrégulier (went) ; 'watch' est régulier (+ed)." },
-    ]},
-    { id: "histoire", name: "Histoire", icon: "⌂", lessons: [
-        { title: "La Révolution française", q: "En quelle année la Révolution française a-t-elle débuté ?", opts: ["1804", "1715", "1848", "1789"], correct: 3, exp: "La prise de la Bastille a lieu le 14 juillet 1789." },
-        { title: "La Première Guerre mondiale", q: "La Première Guerre mondiale se termine en :", opts: ["1920", "1918", "1945", "1914"], correct: 1, exp: "L'armistice est signé le 11 novembre 1918." },
-        { title: "L'Empire romain", q: "Quelle ville était la capitale de l'Empire romain ?", opts: ["Carthage", "Byzance", "Rome", "Athènes"], correct: 2, exp: "Rome est le centre politique de l'Empire jusqu'à sa scission." },
-        { title: "La décolonisation", q: "L'indépendance de l'Algérie a eu lieu en :", opts: ["1970", "1962", "1958", "1954"], correct: 1, exp: "Les accords d'Évian entérinent l'indépendance en 1962." },
-        { type: "vrai_faux", title: "Napoléon", q: "Napoléon Bonaparte est devenu empereur des Français en 1804.", correct: true, exp: "Vrai : il est sacré empereur le 2 décembre 1804." },
-    ]},
-    { id: "geo", name: "Géographie", icon: "⊕", lessons: [
-        { title: "Les fuseaux horaires", q: "Combien de fuseaux horaires existe-t-il sur Terre ?", opts: ["12", "20", "24", "30"], correct: 2, exp: "La Terre est divisée en 24 fuseaux d'environ 15° chacun." },
-        { title: "L'urbanisation", q: "Une mégapole compte généralement plus de :", opts: ["100 millions d'habitants", "500 000 habitants", "1 million d'habitants", "10 millions d'habitants"], correct: 3, exp: "Le seuil communément retenu pour une mégapole est 10 millions d'habitants." },
-        { title: "Le climat", q: "Le climat équatorial se caractérise par :", opts: ["tempéré", "froid et sec", "aride", "chaud et humide toute l'année"], correct: 3, exp: "Proche de l'équateur, températures et précipitations restent élevées toute l'année." },
-        { title: "Les ressources", q: "Quelle énergie est considérée comme renouvelable ?", opts: ["le pétrole", "le gaz naturel", "le charbon", "l'énergie solaire"], correct: 3, exp: "Le soleil est une source inépuisable à l'échelle humaine." },
-        { type: "reponse_courte", title: "Le plus long fleuve", q: "Quel est le plus long fleuve du monde ?", accepted: ["nil", "le nil"], exp: "Le Nil (environ 6 650 km) est généralement considéré comme le plus long fleuve du monde." },
-    ]},
-    { id: "emc", name: "EMC", icon: "⚖", island: "Image/ile/emc.svg", lessons: [
-        { title: "La citoyenneté", q: "Quel âge faut-il avoir pour voter en France ?", opts: ["21 ans", "18 ans", "16 ans", "25 ans"], correct: 1, exp: "La majorité électorale est fixée à 18 ans." },
-        { title: "Les institutions", q: "Qui est élu au suffrage universel direct en France ?", opts: ["le Premier ministre", "les préfets", "le Président de la République", "les juges"], correct: 2, exp: "Le Président est élu directement par les citoyens depuis 1962." },
-        { title: "Les valeurs de la République", q: "« Liberté, Égalité, Fraternité » est :", opts: ["un traité", "un article de loi", "la devise de la France", "une chanson"], correct: 2, exp: "Cette devise figure dans la Constitution française." },
-        { title: "La justice", q: "Le principe de présomption d'innocence signifie que :", opts: ["on est toujours coupable", "on est innocent tant que la culpabilité n'est pas prouvée", "la peine est automatique", "il n'y a pas de procès"], correct: 1, exp: "Ce principe protège tout accusé jusqu'au jugement." },
-        { type: "drag_and_drop", title: "Les pouvoirs", q: "Associe chaque pouvoir à son rôle.", items: ["Pouvoir exécutif", "Pouvoir législatif", "Pouvoir judiciaire"], targets: ["Applique les lois", "Vote les lois", "Fait respecter les lois"], pairs: { "Pouvoir exécutif": "Applique les lois", "Pouvoir législatif": "Vote les lois", "Pouvoir judiciaire": "Fait respecter les lois" }, exp: "La séparation des pouvoirs structure les institutions démocratiques." },
-    ]},
-    { id: "philo", name: "Philosophie", icon: "🏛️", island: "Image/ile/philo.svg", lessons: [
-        { title: "L'allégorie de la caverne", q: "Qui a écrit l'allégorie de la caverne ?", opts: ["Socrate", "Platon", "Aristote", "Descartes"], correct: 1, exp: "Platon expose l'allégorie de la caverne dans La République (Livre VII)." },
-        { title: "Le doute méthodique", q: "Quelle célèbre formule résume la certitude première de René Descartes ?", opts: ["Je sais que je ne sais rien", "L'homme est un loup pour l'homme", "Cogito, ergo sum (Je pense, donc je suis)", "Connais-toi toi-même"], correct: 2, exp: "Dans le Discours de la méthode, Descartes découvre le « Cogito » au terme du doute méthodique." },
-        { title: "La conscience", q: "Pour Sigmund Freud, quelle partie de la psyché regroupe les pulsions refoulées ?", opts: ["Le Surmoi", "Le Moi", "L'Inconscient / Le Ça", "La conscience morale"], correct: 2, exp: "Le Ça représente le réservoir des pulsions inconscientes." },
-        { type: "vrai_faux", title: "L'éthique et la morale", q: "Pour Emmanuel Kant, un acte moral doit être guidé par le devoir et l'impératif catégorique, sans rechercher son propre intérêt.", correct: true, exp: "Vrai : la morale déontologique kantienne repose sur le devoir désintéressé." },
-        { type: "texte_a_trous", title: "Le contrat social", q: "Complète la citation de Jean-Jacques Rousseau.", textWithBlanks: "L'homme est né ___ et partout il est dans les ___.", blanks: [["libre"], ["fers"]], distractors: ["seul", "sage", "liens", "chaînes"], exp: "« L'homme est né libre et partout il est dans les fers » (Du contrat social, 1762)." },
-    ]},
-    { id: "nsi", name: "NSI & Numérique", icon: "Image/ile/nsi.svg", band: "lycee", island: "Image/ile/nsi.svg", lessons: [
-        { title: "Binaire et Bits", q: "Quelle est la valeur décimale de l'octet binaire 00001010 ?", opts: ["8", "10", "12", "16"], correct: 1, exp: "En binaire : 8 + 2 = 10 (positions 2³ et 2¹)." },
-        { title: "Algorithmique Python", q: "En Python, que renvoie l'expression [x * 2 for x in [1, 2, 3]] ?", opts: ["[1, 2, 3]", "[2, 4, 6]", "[2, 2, 2]", "Error"], correct: 1, exp: "C'est une compréhension de liste qui multiplie chaque élément par 2 : [2, 4, 6]." },
-        { type: "vrai_faux", title: "Complexité algorithmique", q: "La recherche dichotomique dans un tableau trié de taille N a une complexité logarithmique O(log N).", correct: true, exp: "Vrai : à chaque étape, on divise par deux l'espace de recherche." },
-        { type: "texte_a_trous", title: "Architecture Web", q: "Complète le rôle des langages du Web.", textWithBlanks: "Le langage ___ structure le contenu d'une page, le langage ___ gère sa présentation visuelle et ___ assure son interactivité dynamique.", blanks: [["HTML"], ["CSS"], ["JavaScript"]], distractors: ["SQL", "Python", "PHP"], exp: "Le trio fondamental du front-end est HTML (structure), CSS (style) et JavaScript (interactivité)." },
-        { type: "drag_and_drop", title: "Réseaux & Protocoles", q: "Associe chaque protocole à son usage.", items: ["HTTP / HTTPS", "DNS", "SSH"], targets: ["Transfert de pages Web", "Résolution nom de domaine en IP", "Connexion à distance sécurisée"], pairs: { "HTTP / HTTPS": "Transfert de pages Web", "DNS": "Résolution nom de domaine en IP", "SSH": "Connexion à distance sécurisée" }, exp: "Ces protocoles fondamentaux structurent les communications sur Internet." },
-    ]},
-    { id: "ses", name: "SES (Économie)", icon: "Image/ile/ses.svg", band: "lycee", island: "Image/ile/ses.svg", lessons: [
-        { title: "Le marché et les prix", q: "Selon la loi de l'offre et de la demande, lorsque la demande d'un bien augmente sans que l'offre ne change, son prix :", opts: ["diminue", "tend à augmenter", "reste toujours fixe", "devient nul"], correct: 1, exp: "La rareté relative entraîne une hausse du prix d'équilibre." },
-        { title: "La création monétaire", q: "Qui crée la majeure partie de la monnaie en circulation dans une économie moderne ?", opts: ["L'État par l'impôt", "Les banques commerciales lors de l'octroi de crédits", "La banque centrale par impression de billets", "Les entreprises industrielles"], correct: 1, exp: "« Les crédits font les dépôts » : les banques commerciales créent la monnaie scripturale lors d'un prêt." },
-        { type: "vrai_faux", title: "Le PIB et la croissance", q: "Le Produit Intérieur Brut (PIB) mesure la richesse totale des patrimoines des ménages.", correct: false, exp: "Faux : le PIB mesure le flux de valeur ajoutée créée sur une période donnée (un an), pas le stock de patrimoine." },
-        { type: "texte_a_choix", title: "La socialisation", q: "Complète les modes d'apprentissage social.", textWithBlanks: "La socialisation ___ se déroule pendant l'enfance au sein de la famille et de l'école, tandis que la socialisation ___ s'exerce à l'âge adulte dans le monde professionnel.", choices: [["primaire", "secondaire", "initiale"], ["secondaire", "primaire", "tertiaire"]], blanks: [["primaire"], ["secondaire"]], exp: "La sociologie distingue la socialisation primaire (enfance) de la socialisation secondaire (vie adulte)." },
-        { type: "drag_and_drop", title: "Facteurs de production", q: "Associe chaque facteur de production à sa définition.", items: ["Facteur Travail", "Facteur Capital", "Progrès technique"], targets: ["Activité humaine rémunérée", "Biens durables utilisés pour produire (machines)", "Amélioration de l'efficacité productive"], pairs: { "Facteur Travail": "Activité humaine rémunérée", "Facteur Capital": "Biens durables utilisés pour produire (machines)", "Progrès technique": "Amélioration de l'efficacité productive" }, exp: "Le travail, le capital et la productivité globale des facteurs sont les moteurs de la production." },
-    ]},
+    {
+        id: "maths", name: "Mathématiques", icon: "∑", lessons: [
+            { title: "Les fractions", q: "Combien font 1/2 + 1/4 ?", opts: ["3/6", "1/6", "3/4", "2/6"], correct: 2, exp: "Au même dénominateur (4) : 2/4 + 1/4 = 3/4." },
+            { title: "Le théorème de Pythagore", q: "Dans un triangle rectangle de côtés 3 et 4, quelle est la longueur de l'hypoténuse ?", opts: ["4,5", "7", "6", "5"], correct: 3, exp: "√(3² + 4²) = √25 = 5." },
+            { title: "Équations du 1er degré", q: "Résous 2x + 3 = 11. Que vaut x ?", opts: ["3", "5,5", "7", "4"], correct: 3, exp: "2x = 8, donc x = 4." },
+            { title: "Les probabilités", q: "On lance un dé à 6 faces. Quelle est la probabilité d'obtenir un nombre pair ?", opts: ["1/2", "1/3", "2/3", "1/6"], correct: 0, exp: "3 issues favorables (2,4,6) sur 6 : 3/6 = 1/2." },
+            { type: "drag_and_drop", title: "Calcul mental", q: "Associe chaque opération à son résultat.", items: ["7 × 8", "144 ÷ 12", "9²", "√81"], targets: ["56", "12", "81", "9"], pairs: { "7 × 8": "56", "144 ÷ 12": "12", "9²": "81", "√81": "9" }, exp: "7 × 8 = 56, 144 ÷ 12 = 12, 9² = 81, √81 = 9." },
+        ]
+    },
+    {
+        id: "francais", name: "Français", icon: "Aa", lessons: [
+            { title: "Les classes grammaticales", q: "Dans « Le chat noir dort », quel mot est un adjectif ?", opts: ["noir", "le", "chat", "dort"], correct: 0, exp: "« Noir » qualifie le nom « chat »." },
+            { title: "Le conditionnel", q: "Quelle est la terminaison du conditionnel présent à la 1ère personne du singulier pour « aimer » ?", opts: ["aimerais", "aimais", "aimerai", "aime"], correct: 0, exp: "Radical du futur + terminaisons de l'imparfait : j'aimerais." },
+            { title: "Les figures de style", q: "« Il pleut des cordes » est une :", opts: ["comparaison", "anaphore", "métaphore", "litote"], correct: 2, exp: "L'image remplace directement la réalité, sans outil de comparaison : c'est une métaphore." },
+            { type: "texte_a_choix", title: "L'argumentation", q: "Complète la phrase avec les connecteurs logiques appropriés.", textWithBlanks: "Il pleuvait des cordes, ___ nous sommes sortis ___ nous avions promis d'aider Marc.", choices: [["mais", "donc", "ainsi", "alors"], ["car", "pourtant", "cependant", "en effet"]], blanks: [["mais"], ["car"]], exp: "« Mais » marque l'opposition et « car » introduit la cause." },
+            { type: "texte_a_trous", title: "Accord du participe passé", q: "Complète la règle.", textWithBlanks: "Avec l'auxiliaire être, le participe passé s'accorde avec le ___ ; avec avoir, il ne s'accorde en général pas avec le ___.", blanks: [["sujet"], ["sujet"]], distractors: ["verbe", "complément", "adjectif"], exp: "Être → accord avec le sujet ; avoir → pas d'accord avec le sujet (sauf COD placé avant, hors programme ici)." },
+        ]
+    },
+    {
+        id: "physique", name: "Physique", icon: "⚛", lessons: [
+            { title: "Les états de la matière", q: "Comment appelle-t-on le passage direct de l'état solide à l'état gazeux ?", opts: ["condensation", "fusion", "évaporation", "sublimation"], correct: 3, exp: "La sublimation évite l'étape liquide." },
+            { title: "La tension électrique", q: "Quelle unité mesure la tension électrique ?", opts: ["le volt", "l'ohm", "le watt", "l'ampère"], correct: 0, exp: "Le volt (V) mesure la tension." },
+            { title: "Les atomes", q: "Combien de protons possède un atome d'hydrogène ?", opts: ["0", "2", "1", "8"], correct: 2, exp: "L'hydrogène a le numéro atomique 1." },
+            { title: "Les mélanges", q: "L'eau salée est un exemple de :", opts: ["mélange homogène", "solide", "corps pur", "mélange hétérogène"], correct: 0, exp: "Le sel est totalement dissous : on ne distingue plus les constituants." },
+            { type: "vrai_faux", title: "La lumière", q: "La lumière se déplace plus vite dans l'eau que dans le vide.", correct: false, exp: "Faux : la lumière est plus rapide dans le vide (≈300 000 km/s) que dans l'eau, où elle ralentit." },
+        ]
+    },
+    {
+        id: "chimie", name: "Chimie", icon: "🧪", lessons: [
+            { title: "Les états de l'eau", q: "Comment appelle-t-on le passage direct de l'état solide à l'état gazeux ?", opts: ["la sublimation", "la fusion", "la condensation", "la liquéfaction"], correct: 0, exp: "La sublimation transforme la glace directement en vapeur, sans passer par l'état liquide." },
+            { title: "Les atomes", q: "Que représente le numéro atomique Z d'un élément ?", opts: ["le nombre de protons du noyau", "le nombre de neutrons", "la masse totale de l'atome", "le nombre d'électrons perdus"], correct: 0, exp: "Z compte les protons : c'est lui qui définit l'élément chimique." },
+            { type: "vrai_faux", title: "Les acides", q: "Une solution acide a un pH inférieur à 7.", correct: true, exp: "Vrai : à 25 °C, pH < 7 = acide, pH = 7 = neutre, pH > 7 = basique." },
+            { type: "texte_a_choix", title: "La neutralisation", q: "Complète le bilan de la réaction.", textWithBlanks: "La réaction entre un acide et une base produit un ___ et de l'___.", choices: [["sel", "gaz", "métal", "précipité"], ["eau", "alcool", "huile", "air"]], blanks: [["sel"], ["eau"]], exp: "Acide + Base → Sel + Eau : c'est la réaction de neutralisation acido-basique." },
+            { type: "texte_a_trous", title: "La molécule d'eau", q: "Complète la formule de la molécule d'eau.", textWithBlanks: "La formule de l'eau est ___₂___ : deux atomes d'hydrogène pour un atome d'oxygène.", blanks: [["H"], ["O"]], distractors: ["C", "N", "Fe"], exp: "H₂O : deux hydrogènes (H) et un oxygène (O)." },
+        ]
+    },
+    {
+        id: "svt", name: "SVT", icon: "❦", lessons: [
+            { title: "La photosynthèse", q: "Quel gaz les plantes absorbent-elles lors de la photosynthèse ?", opts: ["le CO₂", "l'O₂", "l'hydrogène", "l'azote"], correct: 0, exp: "Le CO₂ est transformé en matière organique grâce à la lumière." },
+            { title: "Le système digestif", q: "Où débute la digestion des glucides ?", opts: ["dans la bouche", "dans l'estomac", "dans le foie", "dans l'intestin grêle"], correct: 0, exp: "La salive contient une enzyme qui amorce la digestion de l'amidon." },
+            { title: "La génétique", q: "L'ADN se trouve principalement dans :", opts: ["le cytoplasme", "la membrane", "le noyau de la cellule", "les ribosomes"], correct: 2, exp: "Le noyau protège et organise le matériel génétique." },
+            { title: "Les écosystèmes", q: "Un organisme qui se nourrit exclusivement de végétaux est un :", opts: ["décomposeur", "carnivore", "herbivore", "omnivore"], correct: 2, exp: "Par définition, un herbivore ne consomme que des végétaux." },
+            { type: "reponse_courte", title: "Le cœur", q: "Combien de cavités possède le cœur humain ?", accepted: ["4", "quatre"], exp: "Le cœur a 4 cavités : 2 oreillettes et 2 ventricules." },
+        ]
+    },
+    {
+        id: "techno", name: "Technologie", icon: "⚙", band: "college", lessons: [
+            { type: "texte_a_choix", title: "Les algorithmes", q: "Choisis les bons termes pour compléter la définition.", textWithBlanks: "Pour répéter des instructions tant qu'une condition est vraie, on utilise une boucle ___, et pour faire un choix, une condition ___.", choices: [["tant que", "pour", "infinie"], ["si", "sinon", "alors"]], blanks: [["tant que"], ["si"]], exp: "« Tant que » (while) et « si » (if) sont des structures fondamentales en programmation." },
+            { title: "Les capteurs", q: "Un capteur de température mesure :", opts: ["la pression", "la chaleur ambiante", "le son", "la lumière"], correct: 1, exp: "C'est sa fonction première : convertir une température en signal exploitable." },
+            { title: "Les matériaux", q: "Le PLA est un matériau souvent utilisé en :", opts: ["chauffage", "soudure", "impression 3D", "isolation électrique"], correct: 2, exp: "Le PLA est un plastique biodégradable très utilisé en fabrication additive." },
+            { title: "Les réseaux", q: "Le Wi-Fi fait référence à :", opts: ["un câble réseau", "un type de processeur", "une connexion sans fil", "un logiciel"], correct: 2, exp: "Le Wi-Fi permet une connexion réseau sans câble." },
+            { type: "drag_and_drop", title: "Composants électroniques", q: "Associe chaque composant à son rôle.", items: ["Résistance", "LED", "Capteur"], targets: ["Limite le courant", "Émet de la lumière", "Mesure une grandeur physique"], pairs: { "Résistance": "Limite le courant", LED: "Émet de la lumière", Capteur: "Mesure une grandeur physique" }, exp: "Chaque composant a une fonction précise dans un circuit." },
+        ]
+    },
+    {
+        id: "anglais", name: "Anglais", icon: "En", lessons: [
+            { title: "Present Perfect", q: "Choose the correct form: 'I ___ never been to London.'", opts: ["have", "having", "has", "had"], correct: 0, exp: "Subject 'I' + present perfect → 'have never been'." },
+            { title: "Vocabulaire du quotidien", q: "What does 'to look forward to' mean?", opts: ["chercher quelque chose", "attendre avec impatience", "regarder devant soi", "avancer"], correct: 1, exp: "Cette expression exprime une attente positive d'un événement." },
+            { title: "Comparatives", q: "'This book is ___ than the other one.'", opts: ["interesting", "more interesting", "most interesting", "interestinger"], correct: 1, exp: "Les adjectifs longs forment leur comparatif avec 'more'." },
+            { title: "Modal verbs", q: "Which modal expresses obligation?", opts: ["must", "could", "would", "might"], correct: 0, exp: "'Must' exprime une obligation forte." },
+            { type: "texte_a_trous", title: "Simple past", q: "Complète la phrase.", textWithBlanks: "Yesterday, she ___ (go) to the cinema and ___ (watch) a great film.", blanks: [["went"], ["watched"]], distractors: ["gone", "goes", "watches", "watching"], exp: "'Go' est irrégulier (went) ; 'watch' est régulier (+ed)." },
+        ]
+    },
+    {
+        id: "histoire", name: "Histoire", icon: "⌂", lessons: [
+            { title: "La Révolution française", q: "En quelle année la Révolution française a-t-elle débuté ?", opts: ["1804", "1715", "1848", "1789"], correct: 3, exp: "La prise de la Bastille a lieu le 14 juillet 1789." },
+            { title: "La Première Guerre mondiale", q: "La Première Guerre mondiale se termine en :", opts: ["1920", "1918", "1945", "1914"], correct: 1, exp: "L'armistice est signé le 11 novembre 1918." },
+            { title: "L'Empire romain", q: "Quelle ville était la capitale de l'Empire romain ?", opts: ["Carthage", "Byzance", "Rome", "Athènes"], correct: 2, exp: "Rome est le centre politique de l'Empire jusqu'à sa scission." },
+            { title: "La décolonisation", q: "L'indépendance de l'Algérie a eu lieu en :", opts: ["1970", "1962", "1958", "1954"], correct: 1, exp: "Les accords d'Évian entérinent l'indépendance en 1962." },
+            { type: "vrai_faux", title: "Napoléon", q: "Napoléon Bonaparte est devenu empereur des Français en 1804.", correct: true, exp: "Vrai : il est sacré empereur le 2 décembre 1804." },
+        ]
+    },
+    {
+        id: "geo", name: "Géographie", icon: "⊕", lessons: [
+            { title: "Les fuseaux horaires", q: "Combien de fuseaux horaires existe-t-il sur Terre ?", opts: ["12", "20", "24", "30"], correct: 2, exp: "La Terre est divisée en 24 fuseaux d'environ 15° chacun." },
+            { title: "L'urbanisation", q: "Une mégapole compte généralement plus de :", opts: ["100 millions d'habitants", "500 000 habitants", "1 million d'habitants", "10 millions d'habitants"], correct: 3, exp: "Le seuil communément retenu pour une mégapole est 10 millions d'habitants." },
+            { title: "Le climat", q: "Le climat équatorial se caractérise par :", opts: ["tempéré", "froid et sec", "aride", "chaud et humide toute l'année"], correct: 3, exp: "Proche de l'équateur, températures et précipitations restent élevées toute l'année." },
+            { title: "Les ressources", q: "Quelle énergie est considérée comme renouvelable ?", opts: ["le pétrole", "le gaz naturel", "le charbon", "l'énergie solaire"], correct: 3, exp: "Le soleil est une source inépuisable à l'échelle humaine." },
+            { type: "reponse_courte", title: "Le plus long fleuve", q: "Quel est le plus long fleuve du monde ?", accepted: ["nil", "le nil"], exp: "Le Nil (environ 6 650 km) est généralement considéré comme le plus long fleuve du monde." },
+        ]
+    },
+    {
+        id: "emc", name: "EMC", icon: "⚖", island: "Image/ile/emc.svg", lessons: [
+            { title: "La citoyenneté", q: "Quel âge faut-il avoir pour voter en France ?", opts: ["21 ans", "18 ans", "16 ans", "25 ans"], correct: 1, exp: "La majorité électorale est fixée à 18 ans." },
+            { title: "Les institutions", q: "Qui est élu au suffrage universel direct en France ?", opts: ["le Premier ministre", "les préfets", "le Président de la République", "les juges"], correct: 2, exp: "Le Président est élu directement par les citoyens depuis 1962." },
+            { title: "Les valeurs de la République", q: "« Liberté, Égalité, Fraternité » est :", opts: ["un traité", "un article de loi", "la devise de la France", "une chanson"], correct: 2, exp: "Cette devise figure dans la Constitution française." },
+            { title: "La justice", q: "Le principe de présomption d'innocence signifie que :", opts: ["on est toujours coupable", "on est innocent tant que la culpabilité n'est pas prouvée", "la peine est automatique", "il n'y a pas de procès"], correct: 1, exp: "Ce principe protège tout accusé jusqu'au jugement." },
+            { type: "drag_and_drop", title: "Les pouvoirs", q: "Associe chaque pouvoir à son rôle.", items: ["Pouvoir exécutif", "Pouvoir législatif", "Pouvoir judiciaire"], targets: ["Applique les lois", "Vote les lois", "Fait respecter les lois"], pairs: { "Pouvoir exécutif": "Applique les lois", "Pouvoir législatif": "Vote les lois", "Pouvoir judiciaire": "Fait respecter les lois" }, exp: "La séparation des pouvoirs structure les institutions démocratiques." },
+        ]
+    },
+    {
+        id: "philo", name: "Philosophie", icon: "🏛️", island: "Image/ile/philo.svg", lessons: [
+            { title: "L'allégorie de la caverne", q: "Qui a écrit l'allégorie de la caverne ?", opts: ["Socrate", "Platon", "Aristote", "Descartes"], correct: 1, exp: "Platon expose l'allégorie de la caverne dans La République (Livre VII)." },
+            { title: "Le doute méthodique", q: "Quelle célèbre formule résume la certitude première de René Descartes ?", opts: ["Je sais que je ne sais rien", "L'homme est un loup pour l'homme", "Cogito, ergo sum (Je pense, donc je suis)", "Connais-toi toi-même"], correct: 2, exp: "Dans le Discours de la méthode, Descartes découvre le « Cogito » au terme du doute méthodique." },
+            { title: "La conscience", q: "Pour Sigmund Freud, quelle partie de la psyché regroupe les pulsions refoulées ?", opts: ["Le Surmoi", "Le Moi", "L'Inconscient / Le Ça", "La conscience morale"], correct: 2, exp: "Le Ça représente le réservoir des pulsions inconscientes." },
+            { type: "vrai_faux", title: "L'éthique et la morale", q: "Pour Emmanuel Kant, un acte moral doit être guidé par le devoir et l'impératif catégorique, sans rechercher son propre intérêt.", correct: true, exp: "Vrai : la morale déontologique kantienne repose sur le devoir désintéressé." },
+            { type: "texte_a_trous", title: "Le contrat social", q: "Complète la citation de Jean-Jacques Rousseau.", textWithBlanks: "L'homme est né ___ et partout il est dans les ___.", blanks: [["libre"], ["fers"]], distractors: ["seul", "sage", "liens", "chaînes"], exp: "« L'homme est né libre et partout il est dans les fers » (Du contrat social, 1762)." },
+        ]
+    },
+    {
+        id: "nsi", name: "NSI & Numérique", icon: "Image/ile/nsi.svg", band: "lycee", island: "Image/ile/nsi.svg", lessons: [
+            { title: "Binaire et Bits", q: "Quelle est la valeur décimale de l'octet binaire 00001010 ?", opts: ["8", "10", "12", "16"], correct: 1, exp: "En binaire : 8 + 2 = 10 (positions 2³ et 2¹)." },
+            { title: "Algorithmique Python", q: "En Python, que renvoie l'expression [x * 2 for x in [1, 2, 3]] ?", opts: ["[1, 2, 3]", "[2, 4, 6]", "[2, 2, 2]", "Error"], correct: 1, exp: "C'est une compréhension de liste qui multiplie chaque élément par 2 : [2, 4, 6]." },
+            { type: "vrai_faux", title: "Complexité algorithmique", q: "La recherche dichotomique dans un tableau trié de taille N a une complexité logarithmique O(log N).", correct: true, exp: "Vrai : à chaque étape, on divise par deux l'espace de recherche." },
+            { type: "texte_a_trous", title: "Architecture Web", q: "Complète le rôle des langages du Web.", textWithBlanks: "Le langage ___ structure le contenu d'une page, le langage ___ gère sa présentation visuelle et ___ assure son interactivité dynamique.", blanks: [["HTML"], ["CSS"], ["JavaScript"]], distractors: ["SQL", "Python", "PHP"], exp: "Le trio fondamental du front-end est HTML (structure), CSS (style) et JavaScript (interactivité)." },
+            { type: "drag_and_drop", title: "Réseaux & Protocoles", q: "Associe chaque protocole à son usage.", items: ["HTTP / HTTPS", "DNS", "SSH"], targets: ["Transfert de pages Web", "Résolution nom de domaine en IP", "Connexion à distance sécurisée"], pairs: { "HTTP / HTTPS": "Transfert de pages Web", "DNS": "Résolution nom de domaine en IP", "SSH": "Connexion à distance sécurisée" }, exp: "Ces protocoles fondamentaux structurent les communications sur Internet." },
+        ]
+    },
+    {
+        id: "ses", name: "SES (Économie)", icon: "Image/ile/ses.svg", band: "lycee", island: "Image/ile/ses.svg", lessons: [
+            { title: "Le marché et les prix", q: "Selon la loi de l'offre et de la demande, lorsque la demande d'un bien augmente sans que l'offre ne change, son prix :", opts: ["diminue", "tend à augmenter", "reste toujours fixe", "devient nul"], correct: 1, exp: "La rareté relative entraîne une hausse du prix d'équilibre." },
+            { title: "La création monétaire", q: "Qui crée la majeure partie de la monnaie en circulation dans une économie moderne ?", opts: ["L'État par l'impôt", "Les banques commerciales lors de l'octroi de crédits", "La banque centrale par impression de billets", "Les entreprises industrielles"], correct: 1, exp: "« Les crédits font les dépôts » : les banques commerciales créent la monnaie scripturale lors d'un prêt." },
+            { type: "vrai_faux", title: "Le PIB et la croissance", q: "Le Produit Intérieur Brut (PIB) mesure la richesse totale des patrimoines des ménages.", correct: false, exp: "Faux : le PIB mesure le flux de valeur ajoutée créée sur une période donnée (un an), pas le stock de patrimoine." },
+            { type: "texte_a_choix", title: "La socialisation", q: "Complète les modes d'apprentissage social.", textWithBlanks: "La socialisation ___ se déroule pendant l'enfance au sein de la famille et de l'école, tandis que la socialisation ___ s'exerce à l'âge adulte dans le monde professionnel.", choices: [["primaire", "secondaire", "initiale"], ["secondaire", "primaire", "tertiaire"]], blanks: [["primaire"], ["secondaire"]], exp: "La sociologie distingue la socialisation primaire (enfance) de la socialisation secondaire (vie adulte)." },
+            { type: "drag_and_drop", title: "Facteurs de production", q: "Associe chaque facteur de production à sa définition.", items: ["Facteur Travail", "Facteur Capital", "Progrès technique"], targets: ["Activité humaine rémunérée", "Biens durables utilisés pour produire (machines)", "Amélioration de l'efficacité productive"], pairs: { "Facteur Travail": "Activité humaine rémunérée", "Facteur Capital": "Biens durables utilisés pour produire (machines)", "Progrès technique": "Amélioration de l'efficacité productive" }, exp: "Le travail, le capital et la productivité globale des facteurs sont les moteurs de la production." },
+        ]
+    },
 ];
 
 // Étend chaque matière de 5 leçons écrites à la main à 100 niveaux
@@ -2384,19 +2418,19 @@ let DASH_SUBJECTS = getEffectiveSubjects();
  * dédié — actuellement seule l'EMC est dans ce cas).
  */
 const SUBJECT_TO_MATIERE = {
-    maths:    { name: 'Mathématiques', icon: 'maths.webp' },
-    francais: { name: 'Français',      icon: 'francais.webp' },
-    histoire: { name: 'Histoire',      icon: 'histoire.webp' },
-    geo:      { name: 'Géographie',    icon: 'geo.svg' },
-    svt:      { name: 'SVT',           icon: 'svt.webp' },
-    anglais:  { name: 'Anglais',       icon: 'anglais.webp' },
-    physique: { name: 'Physique',      icon: 'physique.webp' },
-    chimie:   { name: 'Chimie',        icon: 'chimie.svg' },
-    techno:   { name: 'Technologie',   icon: 'technologie.webp' },
-    philo:    { name: 'Philosophie',   icon: 'philo.svg' },
-    emc:      { name: 'EMC',           icon: 'emc.svg' },
-    nsi:      { name: 'NSI & Numérique', icon: 'nsi.svg' },
-    ses:      { name: 'SES (Économie)', icon: 'ses.svg' },
+    maths: { name: 'Mathématiques', icon: 'maths.webp' },
+    francais: { name: 'Français', icon: 'francais.webp' },
+    histoire: { name: 'Histoire', icon: 'histoire.webp' },
+    geo: { name: 'Géographie', icon: 'geo.svg' },
+    svt: { name: 'SVT', icon: 'svt.webp' },
+    anglais: { name: 'Anglais', icon: 'anglais.webp' },
+    physique: { name: 'Physique', icon: 'physique.webp' },
+    chimie: { name: 'Chimie', icon: 'chimie.svg' },
+    techno: { name: 'Technologie', icon: 'technologie.webp' },
+    philo: { name: 'Philosophie', icon: 'philo.svg' },
+    emc: { name: 'EMC', icon: 'emc.svg' },
+    nsi: { name: 'NSI & Numérique', icon: 'nsi.svg' },
+    ses: { name: 'SES (Économie)', icon: 'ses.svg' },
 };
 
 /**
@@ -2488,13 +2522,13 @@ function checkBadges(extra = {}) {
     if (typeof DB === 'undefined' || !DB.getBadges || !DB.unlockBadge) return [];
     const catalog = getBadgesCatalog();
     const unlockedIds = DB.getBadges();
-    
+
     const currentNiveau = (typeof DB.getNiveau === 'function' ? DB.getNiveau() : '6eme') || '6eme';
     const xp = parseInt(DB.getOption('dash_xp') || '0', 10);
     const coins = parseInt(DB.getOption('dash_coins') || '30', 10);
     const playerLevel = Math.floor(xp / 100) + 1;
     let ownedSkins = [];
-    try { ownedSkins = JSON.parse(DB.getOption('dash_ownedSkins') || '["aurore", "robot"]'); } catch(e) {}
+    try { ownedSkins = JSON.parse(DB.getOption('dash_ownedSkins') || '["aurore", "robot"]'); } catch (e) { }
     const theme = DB.getOption('dash_equippedTheme') || 'default';
     const equippedAura = DB.getOption('dash_equippedAura') || DB.getOption('dash_equippedSkin') || 'aurore';
     const boosters = (typeof DB.getBoosters === 'function') ? DB.getBoosters() : {};
@@ -2509,7 +2543,7 @@ function checkBadges(extra = {}) {
     let threeStarCount = 0;
     const completedPerSubject = {};
     const subjects = (typeof DASH_SUBJECTS !== 'undefined') ? DASH_SUBJECTS : [];
-    
+
     subjects.forEach(s => {
         let count = 0;
         const prog = (typeof DB.getProgressSync === 'function')
@@ -2759,34 +2793,34 @@ function initDashboard() {
         document.documentElement.setAttribute('data-theme', equippedTheme);
 
         return {
-            coins:          parseInt(getOption('dash_coins') || '30', 10),
-            xp:             parseInt(getOption('dash_xp') || '0', 10),
-            equippedSkin:   savedSkin,
-            equippedAura:   equippedAura,
+            coins: parseInt(getOption('dash_coins') || '30', 10),
+            xp: parseInt(getOption('dash_xp') || '0', 10),
+            equippedSkin: savedSkin,
+            equippedAura: equippedAura,
             equippedAvatar: equippedAvatar,
-            equippedTitle:  getOption('dash_equippedTitle') || '',
-            equippedTheme:  equippedTheme,
-            ownedSkins:     JSON.parse(getOption('dash_ownedSkins') || '["aurore", "robot"]'),
-            shopCategory:   'all',
-            view:           'dashboard', // Toujours revenir au dashboard au chargement
+            equippedTitle: getOption('dash_equippedTitle') || '',
+            equippedTheme: equippedTheme,
+            ownedSkins: JSON.parse(getOption('dash_ownedSkins') || '["aurore", "robot"]'),
+            shopCategory: 'all',
+            view: 'dashboard', // Toujours revenir au dashboard au chargement
             currentSubject: null,
-            progress:       JSON.parse(getOption('dash_progress') || '{}'),
-            quiz:           null,
-            badges:         DB.getBadges(), // Identifiants des badges déjà débloqués
+            progress: JSON.parse(getOption('dash_progress') || '{}'),
+            quiz: null,
+            badges: DB.getBadges(), // Identifiants des badges déjà débloqués
         };
     }
 
     /** Sauvegarde l'état modifiable dans localStorage via DB. */
     function persistState() {
-        saveOption('dash_coins',          String(state.coins));
-        saveOption('dash_xp',             String(state.xp));
-        saveOption('dash_equippedSkin',   state.equippedSkin || 'aurore');
-        saveOption('dash_equippedAura',   state.equippedAura || 'aurore');
+        saveOption('dash_coins', String(state.coins));
+        saveOption('dash_xp', String(state.xp));
+        saveOption('dash_equippedSkin', state.equippedSkin || 'aurore');
+        saveOption('dash_equippedAura', state.equippedAura || 'aurore');
         saveOption('dash_equippedAvatar', state.equippedAvatar || 'robot');
-        saveOption('dash_equippedTitle',  state.equippedTitle || '');
-        saveOption('dash_equippedTheme',  state.equippedTheme || 'default');
-        saveOption('dash_ownedSkins',     JSON.stringify(state.ownedSkins));
-        saveOption('dash_progress',       JSON.stringify(state.progress));
+        saveOption('dash_equippedTitle', state.equippedTitle || '');
+        saveOption('dash_equippedTheme', state.equippedTheme || 'default');
+        saveOption('dash_ownedSkins', JSON.stringify(state.ownedSkins));
+        saveOption('dash_progress', JSON.stringify(state.progress));
     }
 
     let state = loadState();
@@ -2843,10 +2877,10 @@ function initDashboard() {
         // localement dans ce cas, comme pour un invité).
         const user = DB.getCurrentUser();
         const greeting = user ? `<span class="dash-user-greeting">Salut, ${escapeHtml(user.username)} 👋</span>` : '';
-        
+
         // --- Sélecteur de niveau scolaire (remplace jouer.html) ---
-        const niveaux = (window.AdminStore && typeof AdminStore.getNiveauxScolaires === 'function') 
-            ? AdminStore.getNiveauxScolaires() 
+        const niveaux = (window.AdminStore && typeof AdminStore.getNiveauxScolaires === 'function')
+            ? AdminStore.getNiveauxScolaires()
             : [
                 { id: '6eme', label: '6ème', name: '6ème' },
                 { id: '5eme', label: '5ème', name: '5ème' },
@@ -2986,7 +3020,7 @@ function initDashboard() {
             if (done === 0) {
                 done = state.progress[s.id] || 0;
             }
-            
+
             const total = s.lessons.length;
             const pct = Math.round((done / total) * 100);
             const islandSrc = getSubjectIslandSrc(s);
@@ -3325,11 +3359,15 @@ function initDashboard() {
                 ? `<div class="dash-modal-actions"><button class="dash-btn-primary" onclick="window._dashFinishQuiz()">Continuer</button></div>`
                 : `<div class="dash-modal-actions"><button class="dash-btn-ghost" onclick="window._dashCloseQuiz()">Quitter</button><button class="dash-btn-primary" onclick="window._dashRetryQuiz()">Réessayer</button></div>`;
 
+        const tRem = (typeof window.quizTimeRemaining === 'number' && !isNaN(window.quizTimeRemaining))
+            ? window.quizTimeRemaining
+            : 30;
+        window.quizTimeRemaining = tRem;
         const chronoEnabled = (typeof DB !== 'undefined' && DB.getOption('modeChrono') === 'true');
-        const chronoHtml = chronoEnabled && !answered && !checking 
+        const chronoHtml = chronoEnabled && !answered && !checking
             ? `<div id="chrono-bar-container" style="width:100%; height:10px; background:#1c2430; border-radius:5px; margin-bottom:15px; overflow:hidden; position:relative; box-shadow:inset 0 1px 3px rgba(0,0,0,0.6); border:1px solid rgba(255,255,255,0.1);">
-                <div id="chrono-bar" style="width:${Math.max(0, (window.quizTimeRemaining / 30) * 100)}%; height:100%; background:linear-gradient(90deg, #ff4757, #ffa502); transition: width 1s linear;"></div>
-                <span id="chrono-time-text" style="position:absolute; right:8px; top:50%; transform:translateY(-50%); font-family:'Rajdhani',monospace; font-weight:700; font-size:11px; color:#fff; text-shadow:0 1px 2px #000;">⏱ ${window.quizTimeRemaining || 30}s</span>
+                <div id="chrono-bar" style="width:${Math.max(0, (tRem / 30) * 100)}%; height:100%; background:linear-gradient(90deg, #ff4757, #ffa502); transition: width 1s linear;"></div>
+                <span id="chrono-time-text" style="position:absolute; right:8px; top:50%; transform:translateY(-50%); font-family:'Rajdhani',monospace; font-weight:700; font-size:11px; color:#fff; text-shadow:0 1px 2px #000;">⏱ ${Math.max(0, tRem)}s</span>
                </div>`
             : '';
 
@@ -3345,6 +3383,26 @@ function initDashboard() {
                 if (chronoBar) chronoBar.remove();
                 const hintEl = overlay.querySelector('.dash-hint-container');
                 if (hintEl) hintEl.remove();
+            } else if (chronoEnabled) {
+                let chronoBar = overlay.querySelector('#chrono-bar-container');
+                if (!chronoBar) {
+                    const eyebrow = overlay.querySelector('.dash-eyebrow');
+                    if (eyebrow) eyebrow.insertAdjacentHTML('afterend', chronoHtml);
+                } else {
+                    chronoBar.outerHTML = chronoHtml;
+                }
+                if (window.quizChronoInterval) clearInterval(window.quizChronoInterval);
+                window.quizChronoInterval = setInterval(() => {
+                    window.quizTimeRemaining--;
+                    const cBar = document.getElementById('chrono-bar');
+                    const cText = document.getElementById('chrono-time-text');
+                    if (cBar) cBar.style.width = Math.max(0, (window.quizTimeRemaining / 30) * 100) + '%';
+                    if (cText) cText.textContent = '⏱ ' + Math.max(0, window.quizTimeRemaining) + 's';
+                    if (window.quizTimeRemaining <= 0) {
+                        clearInterval(window.quizChronoInterval);
+                        window._dashSubmitQuiz('TEMPS_ECOULE');
+                    }
+                }, 1000);
             }
 
             const feedbackSlot = overlay.querySelector('.dash-modal-feedback-slot');
@@ -3407,7 +3465,7 @@ function initDashboard() {
 
     /* ============ ACTIONS (exposées sur window pour les onclick inline) ============ */
 
-    window._dashChangeNiveau = function(val) {
+    window._dashChangeNiveau = function (val) {
         DB.setNiveau(val);
         if (typeof getEffectiveSubjects === 'function') {
             DASH_SUBJECTS = getEffectiveSubjects(val);
@@ -3497,6 +3555,7 @@ function initDashboard() {
         state.quiz.lesson = lesson;
         state.quiz.questionId = questionId;
         state.quiz.loading = false;
+        window.quizTimeRemaining = 30;
         renderQuizModal();
     };
 
@@ -3533,6 +3592,7 @@ function initDashboard() {
         state.quiz.lesson = lesson;
         state.quiz.questionId = questionId;
         state.quiz.loading = false;
+        window.quizTimeRemaining = 30;
         renderQuizModal();
     };
 
