@@ -1512,13 +1512,17 @@ function initMap() {
             </button>`;
         }
 
+        const equippedAvatar = (typeof DB !== 'undefined' && DB.getOption)
+            ? (DB.getOption('dash_equippedAvatar') || 'david-martinez')
+            : 'david-martinez';
+
         trackEl.innerHTML = `
             <svg class="path" viewBox="0 0 100 ${trackHeight}" preserveAspectRatio="none" aria-hidden="true" style="width:100%; height:${trackHeight}px;">
                 <path class="path-shadow" d="${pathD}"></path>
                 <path class="path-ground" d="${pathD}"></path>
                 <path class="path-light"  d="${pathD}"></path>
             </svg>
-            <div id="character" class="character" aria-label="Personnage">
+            <div id="character" class="character skin-${escapeHtml(equippedAvatar)}" data-skin="${escapeHtml(equippedAvatar)}" aria-label="Personnage">
                 <div class="character-body">
                     <div class="character-head">
                         <div class="character-eyes">
@@ -2220,6 +2224,13 @@ function initMap() {
 const DASH_SKINS = [
     { id: 'aurore', name: 'Aurore Boréale', color: '#4fd8c4', cost: 0 },
     { id: 'robot', name: 'Robot Assistant', color: '#8fb8c9', img: 'Image/personnages/robot.webp', cost: 0 },
+    { id: 'david-martinez', name: 'David Martinez', category: 'avatar', color: '#ffea00', img: 'Image/personnages/david-martinez.svg', cost: 0 },
+    { id: 'fall-guys', name: 'Champion Fall Guys', category: 'avatar', color: '#ff3e9d', img: 'Image/personnages/fall-guys.svg', cost: 150 },
+    { id: 'hope-fortnite', name: 'Hope (Fortnite)', category: 'avatar', color: '#2563eb', img: 'Image/personnages/hope-fortnite.svg', cost: 200 },
+    { id: 'kasane-teto', name: 'Kasane Teto', category: 'avatar', color: '#e11d48', img: 'Image/personnages/kasane-teto.svg', cost: 250 },
+    { id: 'helldiver', name: 'Helldiver', category: 'avatar', color: '#ffd60a', img: 'Image/personnages/helldiver.svg', cost: 300 },
+    { id: 'space-marine', name: 'Space Marine', category: 'avatar', color: '#1d4ed8', img: 'Image/personnages/space-marine.svg', cost: 350 },
+    { id: 'doom-guy', name: 'Doom Slayer', category: 'avatar', color: '#4f772d', img: 'Image/personnages/doom-guy.svg', cost: 400 },
     { id: 'or', name: 'Comète Dorée', color: '#c8a84b', cost: 60 },
     { id: 'ametiste', name: 'Nova Améthyste', color: '#b685f5', cost: 90 },
     { id: 'rose', name: 'Étoile Rose', color: '#f58fc2', cost: 130 },
@@ -3202,7 +3213,7 @@ function initDashboard() {
             const isBooster = cat === 'booster';
 
             const boosterStock = (typeof DB !== 'undefined' && DB.getBoosters) ? (DB.getBoosters()[s.id] || 0) : 0;
-            const owned = isBooster ? (boosterStock > 0) : (s.id === 'default' || state.ownedSkins.includes(s.id));
+            const owned = isBooster ? (boosterStock > 0) : (s.id === 'default' || s.cost === 0 || state.ownedSkins.includes(s.id));
             const isEquipped = isAura
                 ? (state.equippedAura === s.id)
                 : isAvatar
