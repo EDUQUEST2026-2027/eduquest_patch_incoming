@@ -1,0 +1,2438 @@
+/* =============================================================================
+   ADMIN.JS — EDUQUEST v1.26.0
+   Interface du panneau d'administration (admin.html).
+
+   PRINCIPE :
+   - Accès PROTÉGÉ : le panneau exige un compte avec le rôle « admin ».
+   - Onglets :
+       • Niveaux scolaires → AdminStore (clé 'eduquest_admin_data')
+       • Matières & leçons → AdminStore (surcharges + matières personnalisées)
+       • Membres           → comptes locaux (db.js, rôle élève/admin)
+       • Réglages          → profil, export/import, reset
+   - Toutes les saisies utilisateur sont échappées (esc) avant insertion HTML.
+   - Les actions mutent l'état puis re-rendent la vue : aucun framework.
+
+   SÉCURITÉ :
+   L'accès est protégé par rôle 'admin' (db.js). Si aucun admin n'existe,
+   un formulaire de création est présenté. Si un admin existe mais que la
+   session courante n'est pas admin, un formulaire de connexion est présenté.
+   ============================================================================= */
+
+(function () {
+
+    'use strict';
+
+    const esc = (typeof AdminStore !== 'undefined') ? AdminStore.esc
+        : (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+    const LESSON_LABELS = {
+        qcm: 'QCM',
+        vrai_faux: 'Vrai / Faux',
+        reponse_courte: 'Réponse courte',
+        texte_a_trous: 'Texte à trous',
+        drag_and_drop: 'Association',
+    };
+    const LESSON_ORDER = ['qcm', 'vrai_faux', 'reponse_courte', 'texte_a_trous', 'drag_and_drop'];
+
+    const OFFICIAL_ISLANDS = [
+        { value: 'Image/ile/maths.webp', label: '📐 Île des Mathématiques' },
+        { value: 'Image/ile/francais.webp', label: '📚 Île du Français' },
+        { value: 'Image/ile/histoire.webp', label: '📜 Île de l\'Histoire' },
+        { value: 'Image/ile/geo.svg', label: '🌍 Île de la Géographie' },
+        { value: 'Image/ile/svt.webp', label: '🔬 Île des SVT' },
+        { value: 'Image/ile/anglais.webp', label: '🇬🇧 Île d\'Anglais' },
+        { value: 'Image/ile/physique.webp', label: '⚡ Île de Physique' },
+        { value: 'Image/ile/chimie.svg', label: '🧪 Île de Chimie' },
+        { value: 'Image/ile/technologie.webp', label: '💻 Île de Technologie' },
+        { value: 'Image/ile/philo.svg', label: '🏛️ Île de Philosophie' },
+        { value: 'Image/ile/emc.svg', label: '⚖️ Île d\'EMC' },
+        { value: 'Image/ile/nsi.svg', label: '💻 Île de NSI & Numérique' },
+        { value: 'Image/ile/ses.svg', label: '📈 Île de SES (Économie)' },
+    ];
+
+    function renderSubjectIcon(icon, altText = '', extraClass = '') {
+        const raw = typeof icon === 'string' ? icon.trim() : '';
+        const isImg = raw && (
+            raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('data:') ||
+            raw.startsWith('/') || raw.startsWith('Image/') ||
+            /\.(png|webp|svg|jpg|jpeg)$/i.test(raw)
+        );
+        if (isImg) {
+            let src = raw;
+            if (!src.startsWith('http') && !src.startsWith('data:') && !src.startsWith('/') && !src.startsWith('Image/')) {
+                src = 'Image/ile/' + src;
+            }
+            return `<img src="${esc(src)}" alt="${esc(altText)}" class="adm-subj-img ${extraClass}" onerror="this.onerror=null;this.replaceWith(document.createTextNode('📘'));">`;
+        }
+        return `<span class="adm-subj-emoji ${extraClass}">${esc(raw || '📘')}</span>`;
+    }
+
+    /* ============================== ÉTAT ============================== */
+
+    const S = {
+        authed: false,                 // false par défaut : vérifié au démarrage
+        gate: 'login',                 // 'login' | 'setup' — formulaire affiché
+        tab: 'levels',                 // levels | subjects | members | settings
+        subjectId: null,               // matière ouverte (onglet matières)
+        subjectList: [],               // liste éditable en cache
+        editingLesson: -1,             // -1 = nouvelle leçon, sinon index
+        lessonDraft: null,             // leçon en cours d'édition
+        levelsDraft: null,             // niveaux en cours d'édition
+        members: [],                   // cache des comptes locaux
+        err: '',
+        modeApi: false,
+        studyGrade: '6eme',            // niveau d'étude sélectionné pour prévisualiser/tester
+        questionVariant: 0,            // graine / index de variante aléatoire
+        subjectSubTab: 'manual',       // 'manual' | 'procedural'
+        testModalQuestion: null,       // question en cours de test interactif
+        testModalAnswer: null,         // réponse saisie par l'administrateur
+        testModalResult: null,         // résultat de correction { isCorrect, exp, correctStr }
+    };
+
+    const app = document.getElementById('admApp');
+
+    /* ============================== UTILITAIRES ============================== */
+
+    function toast(msg, kind) {
+        const el = document.getElementById('admToast');
+        if (!el) return;
+        el.textContent = msg;
+        el.className = 'adm-toast show' + (kind === 'err' ? ' err' : kind === 'ok' ? ' ok' : '');
+        clearTimeout(toast._t);
+        toast._t = setTimeout(() => { el.className = 'adm-toast'; }, 3200);
+    }
+
+    function fmtDate(iso) {
+        if (!iso) return '—';
+        const d = new Date(iso);
+        return isNaN(d) ? '—' : d.toLocaleDateString('fr-FR');
+    }
+
+    function typeLabel(t) { return LESSON_LABELS[t] || 'QCM'; }
+
+    /** Réduit un texte long pour les listes. */
+    function clip(s, n) {
+        const str = String(s ?? '');
+        return str.length > (n || 70) ? str.slice(0, (n || 70) - 1) + '…' : str;
+    }
+
+    /** Convertit des lignes « a, b » en tableau de réponses. */
+    function linesToList(text) {
+        return String(text || '')
+            .split(/\r?\n/)
+            .map(l => l.trim())
+            .filter(Boolean);
+    }
+
+    /* ============================== RENDU GLOBAL ============================== */
+
+    function render() {
+        try {
+            if (!S.authed) { renderGate(); return; }
+            renderPanel();
+        } catch (err) {
+            // Affiche l'erreur à l'écran plutôt qu'une page blanche
+            console.error('[AdminPanel] Erreur de rendu :', err);
+            app.innerHTML = `<div class="adm-gate"><div class="adm-card">
+                <h2>Erreur d'affichage</h2>
+                <p class="adm-error">${esc(err && err.message ? err.message : String(err))}</p>
+                <p class="adm-hint">Ouvrez la console (F12) pour plus de détails, puis rechargez la page.</p>
+                <div style="text-align:center; margin-top:14px;"><button class="adm-btn" onclick="location.reload()">Recharger</button></div>
+            </div></div>`;
+        }
+    }
+
+    function renderApiNotice() {
+        app.innerHTML = `
+            <div class="adm-gate">
+                <div class="adm-card">
+                    <h2>Mode API SQL détecté</h2>
+                    <p class="adm-gate-sub">Ce panneau gère la configuration locale (niveaux, matières, leçons) et les comptes « mode local ».</p>
+                    <div class="adm-note warn">
+                        <b>db.js</b> est configuré avec une API (<code>API_URL</code> décommentée) : les comptes et la
+                        progression sont gérés par votre backend SQL. L'administration des membres s'effectue alors
+                        côté serveur (routes <code>/auth</code>, <code>/users</code>…), pas ici.
+                    </div>
+                    <p class="adm-hint">Ce panneau est conçu pour le <b>mode local</b> (comptes et progression dans le
+                    navigateur). Pour personnaliser niveaux, matières et contenus depuis l'interface avec un backend,
+                    repassez temporairement en mode local (<code>API_URL = null</code> dans <code>db.js</code>),
+                    exportez votre configuration, puis réactivez le mode API : les réglages seront conservés.</p>
+                    <div style="margin-top:18px; text-align:center;">
+                        <a class="adm-btn" href="index.html">← Retour au jeu</a>
+                    </div>
+                </div>
+            </div>`;
+    }
+
+    /* ============================== CONNEXION / PREMIER ADMIN ============================== */
+
+    function renderGate() {
+        const isSetup = S.gate === 'setup';
+        const showSetupLink = !isSetup;
+        const showLoginLink = isSetup;
+        app.innerHTML = `
+            <div class="adm-gate">
+                <div class="adm-card">
+                    <h2>${isSetup ? '🛡️ Créer le premier administrateur' : '🛡️ Accès administrateur'}</h2>
+                    <p class="adm-gate-sub">${isSetup
+                ? 'Aucun compte administrateur n\'existe encore. Créez-le pour ouvrir le panneau.'
+                : 'Connectez-vous avec un compte dont le rôle est « admin ».'}</p>
+
+                    ${isSetup ? `
+                        <div class="adm-form">
+                            <div class="adm-field"><label>Adresse e-mail</label>
+                                <input class="adm-input" id="admSetEmail" type="email" autocomplete="username" placeholder="admin@ecole.fr"></div>
+                            <div class="adm-field"><label>Pseudo</label>
+                                <input class="adm-input" id="admSetPseudo" autocomplete="nickname" placeholder="Administrateur"></div>
+                            <div class="adm-field"><label>Mot de passe (6 caractères min.)</label>
+                                <input class="adm-input" id="admSetPass" type="password" autocomplete="new-password"></div>
+                            <div class="adm-error" id="admSetErr"></div>
+                            <button class="adm-btn" onclick="ADM.setupFirst()">Créer et ouvrir le panneau</button>
+                        </div>
+                    ` : `
+                        <div class="adm-form">
+                            <div class="adm-field"><label>Adresse e-mail</label>
+                                <input class="adm-input" id="admLoginEmail" type="email" autocomplete="username" placeholder="admin@ecole.fr"></div>
+                            <div class="adm-field"><label>Mot de passe</label>
+                                <input class="adm-input" id="admLoginPass" type="password" autocomplete="current-password"></div>
+                            <div class="adm-error" id="admLoginErr"></div>
+                            <button class="adm-btn" onclick="ADM.login()">Ouvrir le panneau</button>
+                        </div>
+                    `}
+                    <div class="adm-gate-switch">
+                        ${showSetupLink ? 'Aucun administrateur ? <a onclick="ADM.switchGate()">Créer le premier compte admin</a>' : ''}
+                        ${showLoginLink ? 'Un compte admin existe déjà ? <a onclick="ADM.switchGate()">Se connecter</a>' : ''}
+                    </div>
+                </div>
+            </div>`;
+    }
+
+    function setError(id, msg) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = msg || '';
+    }
+
+    /* ============================== PANNEAU (coquille) ============================== */
+
+    const TABS = [
+        { id: 'levels', icon: '🎓', label: 'Niveaux scolaires' },
+        { id: 'subjects', icon: '📚', label: 'Matières & leçons' },
+        { id: 'badges', icon: '🏆', label: 'Succès' },
+        { id: 'shop', icon: '🛍️', label: 'Boutique' },
+        { id: 'rewards', icon: '🎁', label: 'Récompenses' },
+        { id: 'members', icon: '👥', label: 'Membres' },
+        { id: 'credits', icon: '✨', label: 'Crédits' },
+        { id: 'settings', icon: '⚙️', label: 'Réglages' },
+    ];
+
+    function renderPanel() {
+        app.innerHTML = `
+            <div class="adm-stats" id="admStats">
+                <div class="adm-stat"><b>…</b><span>Comptes</span></div>
+                <div class="adm-stat"><b>…</b><span>Admins</span></div>
+                <div class="adm-stat"><b>…</b><span>Matières</span></div>
+                <div class="adm-stat"><b>…</b><span>Articles Boutique</span></div>
+                <div class="adm-stat"><b>…</b><span>Succès</span></div>
+            </div>
+            <div class="adm-tabs">
+                ${TABS.map(t => `
+                    <button class="adm-tab${S.tab === t.id ? ' active' : ''}" onclick="ADM.tab('${t.id}')">${t.icon} ${t.label}</button>`).join('')}
+            </div>
+            <div id="admTab">${renderTab()}</div>
+            <div id="admModalWrap">${S.testModalQuestion ? renderTestModal() : ''}</div>
+            <p class="adm-hint" style="margin-top:18px; text-align:center;">
+                Rechargez la page du jeu (F5) pour voir vos modifications appliquées.<br>
+                <a href="legal.html" target="_blank">Mentions légales, confidentialité &amp; cookies</a>
+            </p>`;
+        refreshStats();
+    }
+
+    function renderTab() {
+        if (S.tab === 'levels') return renderLevels();
+        if (S.tab === 'subjects') return renderSubjects();
+        if (S.tab === 'badges') return renderBadges();
+        if (S.tab === 'shop') return renderShop();
+        if (S.tab === 'rewards') return renderRewards();
+        if (S.tab === 'members') return renderMembers();
+        if (S.tab === 'credits') return renderCredits();
+        if (S.tab === 'settings') return renderSettings();
+        return '';
+    }
+
+    async function refreshStats() {
+        const wrap = document.getElementById('admStats');
+        if (!wrap) return;
+        let members = [], admins = 0;
+        try {
+            const r = await DB.listLocalMembers();
+            if (r.ok) { members = r.data; admins = members.filter(m => m.role === 'admin').length; }
+        } catch { /* stats optionnelles */ }
+        const subs = typeof AdminStore !== 'undefined' ? AdminStore.listEditable(AdminStore.getDefaultSubjects()) : [];
+        const shopItems = typeof AdminStore !== 'undefined' ? AdminStore.getShopItems() : [];
+        const badges = typeof AdminStore !== 'undefined' ? AdminStore.getBadges() : [];
+        if (!wrap) return;
+        const cells = wrap.querySelectorAll('.adm-stat b');
+        if (cells.length >= 5) {
+            cells[0].textContent = String(members.length);
+            cells[1].textContent = String(admins);
+            cells[2].textContent = String(subs.length);
+            cells[3].textContent = String(shopItems.length);
+            cells[4].textContent = String(badges.length);
+        }
+    }
+
+    /* ============================== ONGLET : NIVEAUX SCOLAIRES ============================== */
+
+    function renderLevels() {
+        if (!S.levelsDraft) S.levelsDraft = AdminStore.getLevels();
+        const draft = S.levelsDraft;
+        const count = draft.length;
+        const rows = draft.map((l, i) => `
+            <tr>
+                <td class="num">${i + 1}</td>
+                <td><input class="adm-input" value="${esc(l.id)}" placeholder="identifiant (ex: ce2)"
+                        oninput="ADM.lvl(${i},'id',this.value)"></td>
+                <td><input class="adm-input" value="${esc(l.label)}" placeholder="Libellé (ex: CE2)"
+                        oninput="ADM.lvl(${i},'label',this.value)"></td>
+                <td>
+                    <select class="adm-select" onchange="ADM.lvl(${i},'band',this.value)">
+                        <option value="college"${l.band === 'college' ? ' selected' : ''}>Collège</option>
+                        <option value="lycee"${l.band === 'lycee' ? ' selected' : ''}>Lycée</option>
+                    </select>
+                </td>
+                <td>
+                    <div class="adm-row-actions">
+                        <button class="adm-ico-btn" title="Monter" ${i === 0 ? 'disabled' : ''} onclick="ADM.lvlMove(${i},-1)">↑</button>
+                        <button class="adm-ico-btn" title="Descendre" ${i === count - 1 ? 'disabled' : ''} onclick="ADM.lvlMove(${i},1)">↓</button>
+                        <button class="adm-ico-btn danger" title="Supprimer" ${count <= 1 ? 'disabled' : ''} onclick="ADM.lvlDelete(${i})">🗑</button>
+                    </div>
+                </td>
+            </tr>`).join('');
+
+        return `
+            <div class="adm-card">
+                <h2>🎓 Niveaux scolaires <small>${count} niveau(x) affiché(s) sur la page « jouer »</small></h2>
+                <div class="adm-note warn">
+                    ⚠️ L'<b>identifiant</b> sert de clé de progression (ex : « 6eme ») : le renommer crée une
+                    nouvelle progression pour les joueurs. Ajoutez ici les classes de votre établissement
+                    (CP, CM1, Seconde…), puis cliquez sur « Enregistrer ».
+                </div>
+                <div class="adm-table-wrap">
+                    <table class="adm-table">
+                        <thead><tr><th class="num">#</th><th>Identifiant</th><th>Libellé affiché</th><th>Bande de contenu</th><th></th></tr></thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </div>
+                <div class="adm-toolbar" style="margin-top:16px;">
+                    <button class="adm-btn adm-btn-ghost" onclick="ADM.lvlAdd()">+ Ajouter un niveau</button>
+                    <button class="adm-btn adm-btn-ok" onclick="ADM.levelsSave()">💾 Enregistrer</button>
+                    <button class="adm-btn adm-btn-ghost" onclick="ADM.levelsCancel()">Annuler</button>
+                    <button class="adm-btn adm-btn-danger adm-right" onclick="ADM.levelsReset()">Rétablir les niveaux par défaut</button>
+                </div>
+                <p class="adm-hint">La « bande de contenu » choisit la difficulté des questions générées (collège ou lycée).
+                Les niveaux par défaut sont : 6ème → Terminale.</p>
+            </div>`;
+    }
+
+    /* ============================== ONGLET : MATIÈRES & LEÇONS ============================== */
+
+    function subjectList() {
+        if (!S.subjectList.length && typeof AdminStore !== 'undefined') {
+            S.subjectList = AdminStore.listEditable(AdminStore.getDefaultSubjects());
+        }
+        return S.subjectList;
+    }
+
+    function renderSubjects() {
+        const list = subjectList();
+        const open = list.find(x => x.id === S.subjectId) || null;
+
+        return `
+            <div class="adm-split">
+                <div>
+                    <div class="adm-card">
+                        <h2>Matières</h2>
+                        <div class="adm-subject-list">
+                            ${list.map(x => {
+                                const bandLabel = x.band === 'college' ? 'Collège' : x.band === 'lycee' ? 'Lycée' : 'Tous';
+                                return `
+                                <button class="adm-subject-item${S.subjectId === x.id ? ' active' : ''}" onclick="ADM.openSubject('${x.id}')">
+                                    <span class="icon">${renderSubjectIcon(x.icon, x.name)}</span>
+                                    <span class="name">
+                                        <span style="display:block; font-weight:600;">${esc(x.name || x.id)}</span>
+                                        <span style="display:inline-flex; gap:4px; margin-top:2px; font-size:0.75rem;">
+                                            <span class="adm-badge adm-badge-type" style="padding:1px 6px; font-size:0.72rem;">${bandLabel}</span>
+                                            ${x.enabled === false ? '<span class="adm-badge danger" style="padding:1px 6px; font-size:0.72rem;">Masquée</span>' : ''}
+                                        </span>
+                                    </span>
+                                    <span class="count" title="${x.lessons.length} leçon(s) écrite(s)">${x.lessons.length}</span>
+                                </button>`;
+                            }).join('')}
+                        </div>
+                        <div style="margin-top:14px; border-top:1px dashed rgba(154,167,216,.2); padding-top:12px;">
+                            <div class="adm-form" style="display:flex; flex-direction:column; gap:8px;">
+                                <div class="adm-field">
+                                    <label>Nom de la nouvelle matière</label>
+                                    <input class="adm-input" id="admNewName" placeholder="Ex: Musique, SES, NSI...">
+                                </div>
+                                <div class="adm-field">
+                                    <label>Cycle d'enseignement</label>
+                                    <select class="adm-select" id="admNewBand">
+                                        <option value="all">🌐 Tous cycles (Collège &amp; Lycée)</option>
+                                        <option value="college">🏫 Collège uniquement (6e → 3e)</option>
+                                        <option value="lycee">🏛️ Lycée uniquement (2de → Tle)</option>
+                                    </select>
+                                </div>
+                                <div class="adm-field">
+                                    <label>Illustration / Île officielle</label>
+                                    <select class="adm-select" id="admNewIslandSelect" onchange="ADM.onSubjectIslandSelect(this.value, 'admNewIcon', 'admNewPreview')">
+                                        <option value="">— Emoji ou URL personnalisée —</option>
+                                        ${OFFICIAL_ISLANDS.map(isl => `<option value="${isl.value}">${isl.label}</option>`).join('')}
+                                    </select>
+                                </div>
+                                <div class="adm-field">
+                                    <label>Icône (URL, fichier ou emoji)</label>
+                                    <div style="display:flex; gap:6px; align-items:center;">
+                                        <input class="adm-input" id="admNewIcon" placeholder="ex: 🎵 ou Image/ile/..." oninput="ADM.updateSubjectIconPreview('admNewIcon', 'admNewPreview')">
+                                        <label class="adm-ico-btn" style="cursor:pointer; display:flex; align-items:center; padding:6px 9px;" title="Charger une image depuis votre PC">
+                                            📁<input type="file" accept="image/*" style="display:none;" onchange="ADM.handleSubjectImageUpload(this, 'admNewIcon', 'admNewPreview')">
+                                        </label>
+                                        <div id="admNewPreview" class="adm-subj-preview" style="width:36px; height:36px; min-width:36px;">
+                                            <span>📘</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <button class="adm-btn adm-btn-ok" style="margin-top:4px;" onclick="ADM.createSubject()">+ Créer la matière</button>
+                            </div>
+                            <p class="adm-hint" style="margin-top:8px;">Les matières personnalisées créées apparaissent immédiatement dans le jeu selon leur cycle et leurs classes autorisées.</p>
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    ${open ? renderSubjectDetail(open) : `
+                        <div class="adm-card"><div class="adm-empty">Sélectionnez une matière pour éditer ses leçons et son niveau d'étude.</div></div>`}
+                </div>
+            </div>`;
+    }
+
+    function renderSubjectDetail(sub) {
+        // Récupère l'état le plus frais depuis le store (surcharges éventuelles)
+        const fresh = subjectList().find(x => x.id === sub.id) || sub;
+        const lessons = fresh.lessons || [];
+        const isCustom = typeof AdminStore !== 'undefined' && AdminStore.isCustom(sub.id);
+        const customized = isCustom || (typeof AdminStore !== 'undefined' && AdminStore.hasOverride(sub.id));
+        const levels = typeof AdminStore !== 'undefined' ? AdminStore.getLevels() : [];
+
+        // Niveaux autorisés : si vide, tous les niveaux correspondant à la bande
+        const allowedNiveaux = Array.isArray(fresh.allowedNiveaux) ? fresh.allowedNiveaux : [];
+
+        // Sous-onglet actif : 'manual' | 'procedural'
+        const subTab = S.subjectSubTab || 'manual';
+
+        // Lignes de leçons manuelles avec bouton de test 🧪
+        const lessonRows = lessons.map((l, i) => `
+            <div class="adm-lesson-row">
+                <div class="head">
+                    <span class="num" style="color:var(--gold); font-weight:700;">${i + 1}</span>
+                    <span class="t">${esc(l.title || ('Niveau ' + (i + 1)))}</span>
+                    <span class="adm-badge adm-badge-type">${esc(typeLabel(l.type))}</span>
+                    <span class="q">${esc(clip(l.q || l.textWithBlanks || l.q, 75))}</span>
+                    <div class="adm-row-actions">
+                        <button class="adm-ico-btn" title="Monter" ${i === 0 ? 'disabled' : ''} onclick="ADM.lessonMove(${i},-1)">↑</button>
+                        <button class="adm-ico-btn" title="Descendre" ${i === lessons.length - 1 ? 'disabled' : ''} onclick="ADM.lessonMove(${i},1)">↓</button>
+                        <button class="adm-ico-btn" title="Tester cette leçon" onclick="ADM.testLesson(${i})">🧪</button>
+                        <button class="adm-ico-btn" title="Modifier" onclick="ADM.editLesson(${i})">✏️</button>
+                        <button class="adm-ico-btn danger" title="Supprimer" onclick="ADM.deleteLesson(${i})">🗑</button>
+                    </div>
+                </div>
+            </div>`).join('');
+
+        const editor = S.editingLesson !== null && S.editingLesson !== undefined && S.editingLesson >= -1
+            && S.subjectId === sub.id ? renderLessonEditor(lessons) : '';
+
+        const currentIcon = fresh.icon || '';
+        const matchingIsland = OFFICIAL_ISLANDS.find(isl => isl.value === currentIcon || (currentIcon && currentIcon.endsWith(isl.value.replace('Image/ile/', ''))));
+
+        // Questions procédurales adaptées à la classe sélectionnée
+        const gradeQuestions = typeof AdminStore !== 'undefined'
+            ? AdminStore.getSubjectQuestionsForGrade(fresh.id, S.studyGrade, S.questionVariant, 8)
+            : { manual: [], generated: [] };
+
+        const proceduralCards = (gradeQuestions.generated || []).map((q, idx) => {
+            const type = q.type || 'qcm';
+            let previewChoices = '';
+            if (type === 'qcm' && Array.isArray(q.opts)) {
+                previewChoices = `
+                    <div class="adm-q-choices">
+                        ${q.opts.map((opt, i) => `
+                            <div class="adm-q-choice ${i === Number(q.correct) ? 'is-correct' : ''}">
+                                ${String.fromCharCode(65 + i)}. ${esc(opt)} ${i === Number(q.correct) ? '✔' : ''}
+                            </div>
+                        `).join('')}
+                    </div>`;
+            } else if (type === 'vrai_faux') {
+                previewChoices = `
+                    <div class="adm-q-choices">
+                        <div class="adm-q-choice ${q.correct === true ? 'is-correct' : ''}">Vrai ${q.correct === true ? '✔' : ''}</div>
+                        <div class="adm-q-choice ${q.correct === false ? 'is-correct' : ''}">Faux ${q.correct === false ? '✔' : ''}</div>
+                    </div>`;
+            } else if (type === 'reponse_courte') {
+                previewChoices = `<div class="adm-hint" style="margin-bottom:6px;">Réponse(s) acceptée(s) : <b>${esc((q.accepted || []).join(', '))}</b></div>`;
+            } else if (type === 'texte_a_trous') {
+                previewChoices = `<div class="adm-hint" style="margin-bottom:6px;">Trou(s) : <b>${esc((q.blanks || []).map(b => (b || []).join('/')).join(', '))}</b></div>`;
+            }
+
+            return `
+                <div class="adm-q-card">
+                    <div class="adm-q-head">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span class="adm-badge" style="background:rgba(200,168,75,0.2); color:var(--gold-soft); font-weight:700;">Question ${idx + 1}</span>
+                            <span class="adm-badge adm-badge-type">${esc(typeLabel(type))}</span>
+                            <span class="adm-badge" style="background:rgba(95,212,230,0.15); color:var(--cyan);">${esc(S.studyGrade.toUpperCase())}</span>
+                        </div>
+                        <div class="adm-row-actions">
+                            <button class="adm-btn adm-btn-ok" style="padding:4px 10px; font-size:0.8rem;" onclick="ADM.importProceduralQuestion(${idx})">📋 Importer en leçon manuelle</button>
+                            <button class="adm-btn adm-btn-ghost" style="padding:4px 10px; font-size:0.8rem;" onclick="ADM.testProceduralQuestion(${idx})">🧪 Tester</button>
+                        </div>
+                    </div>
+                    <div class="adm-q-text">${esc(q.q || q.title || 'Question')}</div>
+                    ${previewChoices}
+                    ${q.exp ? `<div class="adm-q-exp">💡 Explication : ${esc(q.exp)}</div>` : ''}
+                </div>`;
+        }).join('');
+
+        return `
+            <div class="adm-card">
+                <div class="adm-toolbar">
+                    <h2 style="margin:0; display:flex; align-items:center; gap:10px;">
+                        ${renderSubjectIcon(fresh.icon, fresh.name, 'adm-title-img')} ${esc(fresh.name)}
+                    </h2>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <span class="adm-badge ${isCustom ? 'adm-badge-custom' : 'adm-badge-system'}">${isCustom ? 'Matière personnalisée' : 'Matière du jeu'}</span>
+                        <span class="adm-badge ${fresh.enabled !== false ? 'adm-badge-type' : 'danger'}">${fresh.enabled !== false ? 'Visible' : 'Masquée'}</span>
+                    </div>
+                </div>
+
+                <div class="adm-note">
+                    ${isCustom
+                ? `Matière personnalisée : vous pouvez choisir à quels niveaux d'étude et cycles elle est rattachée (${lessons.length} leçon(s) manuelle(s)).`
+                : `Matière officielle : adaptable par niveau d'étude (${fresh.band || 'all'}). Vous pouvez surcharger les premières leçons manuellement ou laisser le générateur adapter le contenu automatiquement.`}
+                </div>
+
+                <!-- FORMULAIRE MÉTA-DONNÉES & CYCLE D'ÉTUDE -->
+                <div class="adm-form" style="margin-bottom:14px; background:rgba(255,255,255,0.02); border:1px solid rgba(200,168,75,0.18); border-radius:10px; padding:14px;">
+                    <div class="adm-grid-2" style="margin-bottom:10px;">
+                        <div class="adm-field">
+                            <label>Nom de la matière</label>
+                            <input class="adm-input" id="admMetaName" value="${esc(fresh.name)}">
+                        </div>
+                        <div class="adm-field">
+                            <label>Cycle d'enseignement rattaché</label>
+                            <select class="adm-select" id="admMetaBand" onchange="ADM.onBandChange(this.value)">
+                                <option value="all"${(fresh.band || 'all') === 'all' ? ' selected' : ''}>🌐 Tous niveaux (Collège &amp; Lycée)</option>
+                                <option value="college"${fresh.band === 'college' ? ' selected' : ''}>🏫 Collège uniquement (6e → 3e)</option>
+                                <option value="lycee"${fresh.band === 'lycee' ? ' selected' : ''}>🏛️ Lycée uniquement (2de → Tle)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- NIVEAUX SCOLAIRES AUTORISÉS (CLASSES) -->
+                    <div class="adm-field" style="margin-bottom:10px;">
+                        <label style="display:flex; justify-content:space-between; align-items:center;">
+                            <span>Niveaux d'étude autorisés pour cette matière :</span>
+                            <span style="font-size:0.8rem; font-weight:normal; color:var(--muted);">
+                                ${allowedNiveaux.length === 0 ? 'Toutes les classes du cycle sont autorisées' : allowedNiveaux.length + ' classe(s) sélectionnée(s)'}
+                            </span>
+                        </label>
+                        <div class="adm-grade-pills">
+                            ${levels.map(l => {
+                                const isChecked = allowedNiveaux.length === 0 || allowedNiveaux.includes(l.id);
+                                return `<button type="button" class="adm-grade-pill ${isChecked ? 'checked' : ''}" onclick="ADM.toggleSubjectGrade('${l.id}')">
+                                    ${isChecked ? '✓' : '○'} ${esc(l.label || l.id)}
+                                </button>`;
+                            }).join('')}
+                            <button type="button" class="adm-btn adm-btn-ghost" style="padding:3px 8px; font-size:0.75rem;" onclick="ADM.setAllSubjectGrades(true)">Tout cocher</button>
+                            <button type="button" class="adm-btn adm-btn-ghost" style="padding:3px 8px; font-size:0.75rem;" onclick="ADM.setAllSubjectGrades(false)">Tout décocher</button>
+                        </div>
+                        <p class="adm-hint" style="margin-top:4px;">Seuls les élèves connectés dans les classes cochées auront accès à cette matière.</p>
+                    </div>
+
+                    <div class="adm-form-row" style="align-items:flex-end; gap:12px; flex-wrap:wrap; margin-bottom:10px;">
+                        <div class="adm-field" style="flex:1; min-width:200px;">
+                            <label>Illustration / Île officielle</label>
+                            <select class="adm-select" id="admMetaIslandSelect" onchange="ADM.onSubjectIslandSelect(this.value, 'admMetaIcon', 'admMetaPreview')">
+                                <option value="">— Emoji ou URL personnalisée —</option>
+                                ${OFFICIAL_ISLANDS.map(isl => `<option value="${isl.value}"${matchingIsland && matchingIsland.value === isl.value ? ' selected' : ''}>${isl.label}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div class="adm-field" style="flex:1; min-width:180px;">
+                            <label>Icône (URL, fichier ou emoji)</label>
+                            <div style="display:flex; gap:6px; align-items:center;">
+                                <input class="adm-input" id="admMetaIcon" value="${esc(fresh.icon)}" placeholder="Ex: Image/ile/maths.webp ou 📐" oninput="ADM.updateSubjectIconPreview('admMetaIcon', 'admMetaPreview')">
+                                <label class="adm-ico-btn" style="cursor:pointer; display:flex; align-items:center; padding:6px 9px;" title="Charger une image locale (PNG, SVG, WebP, JPG)">
+                                    📁<input type="file" accept="image/*" style="display:none;" onchange="ADM.handleSubjectImageUpload(this, 'admMetaIcon', 'admMetaPreview')">
+                                </label>
+                            </div>
+                        </div>
+                        <div class="adm-field" style="width:auto;">
+                            <label style="text-align:center;">Aperçu</label>
+                            <div id="admMetaPreview" class="adm-subj-preview">
+                                ${renderSubjectIcon(fresh.icon, fresh.name)}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="adm-grid-2" style="margin-bottom:10px;">
+                        <div class="adm-field">
+                            <label>Description pédagogique (optionnelle)</label>
+                            <input class="adm-input" id="admMetaDesc" value="${esc(fresh.description || '')}" placeholder="Ex: Notions clés, exercices et défis pour progresser">
+                        </div>
+                        <div class="adm-field" style="display:flex; align-items:center; gap:8px; margin-top:22px;">
+                            <input type="checkbox" id="admMetaEnabled" ${fresh.enabled !== false ? 'checked' : ''} style="width:18px; height:18px; cursor:pointer;">
+                            <label for="admMetaEnabled" style="margin:0; cursor:pointer; font-weight:600;">Matière active et visible sur le dashboard élève</label>
+                        </div>
+                    </div>
+
+                    <div class="adm-toolbar">
+                        <button class="adm-btn adm-btn-ok" onclick="ADM.saveMeta()">💾 Enregistrer les réglages de la matière</button>
+                        ${isCustom
+                ? `<button class="adm-btn adm-btn-danger adm-right" onclick="ADM.deleteSubject()">Supprimer la matière</button>`
+                : `<button class="adm-btn adm-btn-ghost adm-right" onclick="ADM.resetSubject()" title="Retirer toutes les modifications de cette matière">Rétablir l'original</button>`}
+                    </div>
+                </div>
+
+                <!-- SOUS-ONGLETS DE CONTENU : LEÇONS MANUELLES vs QUESTIONS PAR NIVEAU / ALÉATOIRE -->
+                <div class="adm-subtabs">
+                    <button class="adm-subtab ${subTab !== 'procedural' ? 'active' : ''}" onclick="ADM.setSubjectSubTab('manual')">
+                        📝 Leçons manuelles (${lessons.length})
+                    </button>
+                    <button class="adm-subtab ${subTab === 'procedural' ? 'active' : ''}" onclick="ADM.setSubjectSubTab('procedural')">
+                        🎲 Questions par niveau d'étude &amp; Aléatoire
+                    </button>
+                </div>
+
+                ${subTab === 'manual' ? `
+                    <!-- VUE 1 : LEÇONS MANUELLES -->
+                    ${editor}
+                    <div class="adm-toolbar" style="margin-top:10px;">
+                        <button class="adm-btn" onclick="ADM.newLesson()">+ Ajouter une leçon (niveau ${lessons.length + 1})</button>
+                        <button class="adm-btn adm-btn-ghost" onclick="ADM.openSubject('')">‹ Retour à la liste</button>
+                    </div>
+                    ${lessons.length ? `<div class="adm-lesson-preview">${lessons.length} leçon(s) manuelle(s) — cliquez sur ✏️ pour éditer ou 🧪 pour tester.</div>` : '<div class="adm-empty">Aucune leçon manuelle écrite pour l\'instant.</div>'}
+                    ${lessonRows}
+                ` : `
+                    <!-- VUE 2 : QUESTIONS PAR NIVEAU & GÉNÉRATEUR ALÉATOIRE -->
+                    <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(95,212,230,0.25); border-radius:10px; padding:14px; margin-top:10px;">
+                        <div class="adm-grid-2" style="align-items:center;">
+                            <div class="adm-field">
+                                <label>Niveau d'étude à prévisualiser :</label>
+                                <select class="adm-select" id="admStudyGradeSelect" onchange="ADM.changeStudyGrade(this.value)">
+                                    ${levels.map(l => `<option value="${l.id}"${S.studyGrade === l.id ? ' selected' : ''}>${l.label || l.id} (${l.band === 'lycee' ? 'Lycée' : 'Collège'})</option>`).join('')}
+                                </select>
+                            </div>
+                            <div style="display:flex; gap:8px; align-items:flex-end;">
+                                <div style="flex:1;">
+                                    <label>Variante aléatoire active :</label>
+                                    <div style="font-size:0.95rem; font-weight:700; color:var(--gold-soft); padding:8px 0;">
+                                        🎲 Graine / Variante n° ${S.questionVariant}
+                                    </div>
+                                </div>
+                                <button class="adm-btn adm-btn-ok" style="white-space:nowrap;" onclick="ADM.nextQuestionVariant()">🎲 Tirer une autre variante</button>
+                                <button class="adm-btn adm-btn-ghost" onclick="ADM.resetQuestionVariant()">🔄 Réinitialiser</button>
+                            </div>
+                        </div>
+                        <p class="adm-hint" style="margin-top:8px;">
+                            Ces questions sont adaptées en temps réel au niveau d'étude choisi (<b>${esc(S.studyGrade.toUpperCase())}</b>) et à la variante aléatoire active.
+                            Vous pouvez tester n'importe quelle question en direct (🧪) ou l'importer en 1 clic (📋) dans vos leçons manuelles pour la retravailler !
+                        </p>
+                    </div>
+
+                    <div class="adm-procedural-list">
+                        ${isCustom ? `
+                            <div class="adm-empty">
+                                Les matières personnalisées créées par l'enseignant utilisent uniquement vos leçons manuelles.<br>
+                                <button class="adm-btn adm-btn-ok" style="margin-top:10px;" onclick="ADM.setSubjectSubTab('manual')">Ajouter une leçon manuelle</button>
+                            </div>
+                        ` : (proceduralCards || '<div class="adm-empty">Aucune question disponible pour ce niveau.</div>')}
+                    </div>
+                `}
+            </div>`;
+    }
+
+    function renderTestModal() {
+        const q = S.testModalQuestion;
+        if (!q) return '';
+        const res = S.testModalResult;
+        const type = q.type || 'qcm';
+
+        let interactiveHtml = '';
+        if (type === 'qcm') {
+            const opts = Array.isArray(q.opts) ? q.opts : [];
+            interactiveHtml = `
+                <div class="adm-test-options" style="display:flex; flex-direction:column; gap:8px; margin:16px 0;">
+                    ${opts.map((opt, i) => {
+                        const sel = S.testModalAnswer === i;
+                        return `<button type="button" class="adm-btn ${sel ? 'adm-btn-ok' : 'adm-btn-ghost'}" style="text-align:left; justify-content:flex-start;" onclick="ADM.selectTestAnswer(${i})">
+                            <b style="min-width:24px;">${String.fromCharCode(65 + i)}.</b> ${esc(opt)}
+                        </button>`;
+                    }).join('')}
+                </div>`;
+        } else if (type === 'vrai_faux') {
+            interactiveHtml = `
+                <div style="display:flex; gap:12px; margin:16px 0;">
+                    <button type="button" class="adm-btn ${S.testModalAnswer === true ? 'adm-btn-ok' : 'adm-btn-ghost'}" style="flex:1;" onclick="ADM.selectTestAnswer(true)">
+                        ✓ Vrai
+                    </button>
+                    <button type="button" class="adm-btn ${S.testModalAnswer === false ? 'adm-btn-ok' : 'adm-btn-ghost'}" style="flex:1;" onclick="ADM.selectTestAnswer(false)">
+                        ✗ Faux
+                    </button>
+                </div>`;
+        } else if (type === 'reponse_courte') {
+            interactiveHtml = `
+                <div style="margin:16px 0;">
+                    <label class="adm-hint" style="display:block; margin-bottom:6px;">Saisissez votre réponse :</label>
+                    <input class="adm-input" id="admTestShortInput" value="${esc(S.testModalAnswer || '')}" placeholder="Tapez votre réponse ici..." oninput="ADM.selectTestAnswer(this.value)" style="font-size:1.05rem; padding:10px 14px;">
+                </div>`;
+        } else if (type === 'texte_a_trous') {
+            const text = q.textWithBlanks || q.q || '';
+            interactiveHtml = `
+                <div style="margin:16px 0; font-size:1.05rem; line-height:1.6;">
+                    <p style="background:rgba(255,255,255,0.03); padding:10px; border-radius:8px;">${esc(text)}</p>
+                    <label class="adm-hint" style="display:block; margin:8px 0 4px;">Saisissez les mots manquants (séparés par une virgule) :</label>
+                    <input class="adm-input" id="admTestBlanksInput" value="${esc(Array.isArray(S.testModalAnswer) ? S.testModalAnswer.join(', ') : (S.testModalAnswer || ''))}" placeholder="ex: mot1, mot2..." oninput="ADM.selectTestAnswer(this.value.split(',').map(s=>s.trim()))">
+                </div>`;
+        } else { // drag_and_drop
+            const items = q.items || [];
+            const targets = q.targets || [];
+            interactiveHtml = `
+                <div style="margin:16px 0;">
+                    <p class="adm-hint">Paires à valider :</p>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                        <div>${items.map((it, idx) => `<div style="padding:8px; background:rgba(255,255,255,0.05); border-radius:6px; margin-bottom:6px;"><b>${idx + 1}.</b> ${esc(it)}</div>`).join('')}</div>
+                        <div>${targets.map((tg, idx) => `<div style="padding:8px; background:rgba(255,255,255,0.05); border-radius:6px; margin-bottom:6px; color:var(--gold-soft);">→ ${esc(tg)}</div>`).join('')}</div>
+                    </div>
+                </div>`;
+        }
+
+        let resultBanner = '';
+        if (res) {
+            if (res.isCorrect) {
+                resultBanner = `
+                    <div class="adm-note ok" style="margin-top:14px; border-left-color:var(--green); background:rgba(102,187,106,0.15);">
+                        <div style="color:#a5d6a7; font-weight:700; font-size:1.05rem;">🎉 Réponse correcte !</div>
+                        ${res.exp ? `<p style="margin:6px 0 0; color:#dcedc8; font-size:0.9rem;">💡 ${esc(res.exp)}</p>` : ''}
+                    </div>`;
+            } else {
+                resultBanner = `
+                    <div class="adm-note warn" style="margin-top:14px;">
+                        <div style="color:#ffb74d; font-weight:700; font-size:1.05rem;">❌ Réponse incorrecte</div>
+                        <p style="margin:6px 0 0; font-size:0.95rem;">Attendu : <b>${esc(res.correctStr || '')}</b></p>
+                        ${res.exp ? `<p style="margin:6px 0 0; font-size:0.85rem; color:#8fa1d0;">💡 ${esc(res.exp)}</p>` : ''}
+                    </div>`;
+            }
+        }
+
+        return `
+            <div class="adm-modal-backdrop" onclick="if(event.target===this)ADM.closeTestModal()">
+                <div class="adm-modal-card">
+                    <div class="adm-modal-header">
+                        <h3 style="margin:0; display:flex; align-items:center; gap:8px;">
+                            🧪 Test interactif de la question
+                            <span class="adm-badge adm-badge-type">${esc(typeLabel(type))}</span>
+                        </h3>
+                        <button class="adm-ico-btn" onclick="ADM.closeTestModal()" title="Fermer">✕</button>
+                    </div>
+                    <div style="margin-top:14px;">
+                        <p style="font-size:1.15rem; font-weight:600; color:#fff; margin-bottom:12px; line-height:1.4;">
+                            ${esc(q.q || q.title || 'Question')}
+                        </p>
+                        ${interactiveHtml}
+                        ${resultBanner}
+                        <div class="adm-toolbar" style="margin-top:16px; border-top:1px dashed rgba(154,167,216,0.2); padding-top:12px;">
+                            <button class="adm-btn adm-btn-ok" onclick="ADM.submitTestAnswer()">Valider la réponse</button>
+                            <button class="adm-btn adm-btn-ghost" onclick="ADM.closeTestModal()">Fermer</button>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+    }
+
+    /* ----- Éditeur d'une leçon ----- */
+
+    function renderLessonEditor(lessons) {
+        const isNew = S.editingLesson === -1;
+        const d = S.lessonDraft || { type: 'qcm', title: '', q: '', opts: ['', '', '', ''], correct: 0, exp: '' };
+        const type = d.type || 'qcm';
+        const opts = Array.isArray(d.opts) ? d.opts.slice(0, 4) : ['', '', '', ''];
+        while (opts.length < 4) opts.push('');
+
+        const typeSelect = `
+            <div class="adm-field" style="max-width:220px;">
+                <label>Type de question</label>
+                <select class="adm-select" id="admF_type" onchange="ADM.lessonType(this.value)">
+                    ${LESSON_ORDER.map(t => `<option value="${t}"${t === type ? ' selected' : ''}>${typeLabel(t)}</option>`).join('')}
+                </select>
+            </div>`;
+
+        const commonFields = `
+            <div class="adm-field"><label>Titre du niveau (facultatif)</label>
+                <input class="adm-input" id="admF_title" value="${esc(d.title || '')}" placeholder="Ex: La Révolution française"></div>
+            ${typeFields(type, d)}
+            <div class="adm-field"><label>Explication (affichée après la réponse)</label>
+                <textarea class="adm-textarea" id="admF_exp" rows="2">${esc(d.exp || '')}</textarea></div>`;
+
+        return `
+            <div class="adm-editor">
+                <h3>${isNew ? '➕ Nouvelle leçon' : '✏️ Modifier la leçon ' + (S.editingLesson + 1)}</h3>
+                <div class="adm-form">
+                    ${typeSelect}
+                    ${commonFields}
+                    <div class="adm-error" id="admLessonErr"></div>
+                    <div class="adm-toolbar">
+                        <button class="adm-btn adm-btn-ok" onclick="ADM.lessonSave()">💾 Enregistrer la leçon</button>
+                        <button class="adm-btn adm-btn-ghost" onclick="ADM.cancelLesson()">Annuler</button>
+                    </div>
+                </div>
+            </div>`;
+    }
+
+    function typeFields(type, d) {
+        if (type === 'qcm') {
+            const opts = Array.isArray(d.opts) ? d.opts.slice(0, 4) : ['', '', '', ''];
+            while (opts.length < 4) opts.push('');
+            const correct = Number(d.correct);
+            return `
+                <div class="adm-field"><label>Question</label>
+                    <textarea class="adm-textarea" id="admF_q" rows="2">${esc(d.q || '')}</textarea></div>
+                <div class="adm-field"><label>Réponses proposées (cochez la bonne)</label>
+                    ${opts.map((o, i) => `
+                        <div class="adm-opt-row" style="margin-bottom:6px;">
+                            <input type="radio" name="admF_correct" value="${i}" id="admC${i}" ${i === correct ? 'checked' : ''} title="Bonne réponse">
+                            <input class="adm-input" id="admF_opt${i}" value="${esc(o)}" placeholder="Réponse ${String.fromCharCode(65 + i)}">
+                            ${i === correct ? '<span class="adm-correct-tag">✔ bonne réponse</span>' : ''}
+                        </div>`).join('')}
+                </div>`;
+        }
+        if (type === 'vrai_faux') {
+            return `
+                <div class="adm-field"><label>Affirmation (vrai ou faux)</label>
+                    <textarea class="adm-textarea" id="admF_q" rows="2">${esc(d.q || '')}</textarea></div>
+                <div class="adm-field" style="max-width:180px;"><label>Réponse attendue</label>
+                    <select class="adm-select" id="admF_vf">
+                        <option value="true"${d.correct === true ? ' selected' : ''}>Vrai</option>
+                        <option value="false"${d.correct === false ? ' selected' : ''}>Faux</option>
+                    </select></div>`;
+        }
+        if (type === 'reponse_courte') {
+            return `
+                <div class="adm-field"><label>Question</label>
+                    <textarea class="adm-textarea" id="admF_q" rows="2">${esc(d.q || '')}</textarea></div>
+                <div class="adm-field"><label>Réponses acceptées (une par ligne)</label>
+                    <textarea class="adm-textarea" id="admF_acc" rows="3">${esc((d.accepted || []).join('\n'))}</textarea></div>`;
+        }
+        if (type === 'texte_a_trous') {
+            return `
+                <div class="adm-field"><label>Phrase à compléter (chaque trou = ___ )</label>
+                    <textarea class="adm-textarea" id="admF_txt" rows="2">${esc(d.textWithBlanks || '')}</textarea></div>
+                <div class="adm-field"><label>Réponses des trous (une ligne par trou, alternatives séparées par des virgules)</label>
+                    <textarea class="adm-textarea" id="admF_blanks" rows="3">${esc((d.blanks || []).map(b => (b || []).join(', ')).join('\n'))}</textarea></div>`;
+        }
+        // drag_and_drop
+        return `
+            <div class="adm-field"><label>Consigne</label>
+                <textarea class="adm-textarea" id="admF_q" rows="2">${esc(d.q || '')}</textarea></div>
+            <div class="adm-grid-2">
+                <div class="adm-field"><label>Éléments à associer (un par ligne)</label>
+                    <textarea class="adm-textarea" id="admF_items" rows="4">${esc((d.items || []).join('\n'))}</textarea></div>
+                <div class="adm-field"><label>Cibles (un par ligne, même ordre)</label>
+                    <textarea class="adm-textarea" id="admF_targets" rows="4">${esc((d.targets || []).join('\n'))}</textarea></div>
+            </div>
+            <p class="adm-hint">Les paires sont formées par position : 1er élément ↔ 1ère cible, etc.</p>`;
+    }
+
+    /** Lit le formulaire d'édition et reconstruit la leçon canonique. */
+    function readLessonForm() {
+        const type = (document.getElementById('admF_type') || {}).value || 'qcm';
+        const val = (id) => (document.getElementById(id) || {}).value ?? '';
+        const lesson = { type, title: val('admF_title').trim() };
+        if (type === 'qcm') {
+            lesson.q = val('admF_q').trim();
+            lesson.opts = [0, 1, 2, 3].map(i => val('admF_opt' + i).trim());
+            const radio = document.querySelector('input[name="admF_correct"]:checked');
+            lesson.correct = radio ? Number(radio.value) : 0;
+            lesson.exp = val('admF_exp').trim();
+        } else if (type === 'vrai_faux') {
+            lesson.q = val('admF_q').trim();
+            lesson.correct = val('admF_vf') === 'true';
+            lesson.exp = val('admF_exp').trim();
+        } else if (type === 'reponse_courte') {
+            lesson.q = val('admF_q').trim();
+            lesson.accepted = linesToList(val('admF_acc'));
+            lesson.exp = val('admF_exp').trim();
+        } else if (type === 'texte_a_trous') {
+            lesson.textWithBlanks = val('admF_txt').trim();
+            lesson.blanks = linesToList(val('admF_blanks')).map(line =>
+                line.split(',').map(s => s.trim()).filter(Boolean));
+            lesson.exp = val('admF_exp').trim();
+        } else { // drag_and_drop
+            lesson.q = val('admF_q').trim();
+            lesson.items = linesToList(val('admF_items'));
+            lesson.targets = linesToList(val('admF_targets'));
+            const pairs = {};
+            lesson.items.forEach((it, i) => { if (lesson.targets[i]) pairs[it] = lesson.targets[i]; });
+            lesson.pairs = pairs;
+            lesson.exp = val('admF_exp').trim();
+        }
+        return lesson;
+    }
+
+    /* ============================== ONGLET : SUCCÈS ============================== */
+
+    const BADGE_CATEGORY_LABELS = {
+        all: '🌟 Tous',
+        progression: '🎯 Progression',
+        precision: '✨ Précision',
+        exploration: '🌐 Exploration',
+        maitrise: '🏆 Maîtrise',
+        boutique: '🎨 Boutique',
+        niveau: '🚀 Niveau & XP',
+        economie: '💰 Économie',
+        potions: '🧪 Potions',
+        matieres: '📚 Matières',
+        personnalisation: '✨ Personnalisation',
+        quetes: '📋 Quêtes',
+    };
+
+    function renderBadges() {
+        const cat = S.badgeCategory || 'all';
+        const allBadges = (typeof AdminStore !== 'undefined') ? AdminStore.getBadges() : [];
+        const filtered = cat === 'all' ? allBadges : allBadges.filter(b => (b.category || 'progression') === cat);
+        const unlockedList = (typeof DB !== 'undefined') ? DB.getBadges() : [];
+
+        const editor = S.editingBadge ? renderBadgeEditor(S.editingBadge) : '';
+
+        const badgeCards = filtered.map(b => {
+            const isUnlocked = unlockedList.includes(b.id);
+            return `
+                <div class="adm-shop-card ${b.disabled ? 'disabled' : ''}">
+                    <div class="adm-shop-card-head">
+                        <div class="adm-shop-orb" style="font-size: 2rem; background: rgba(200,168,75,0.15);">
+                            ${esc(b.icon || '🏆')}
+                        </div>
+                        <div class="adm-shop-meta">
+                            <div class="adm-shop-title">
+                                <b>${esc(b.name)}</b>
+                                <span class="adm-badge adm-badge-type">${esc(BADGE_CATEGORY_LABELS[b.category] || b.category)}</span>
+                            </div>
+                            <div class="adm-shop-cost" style="font-size:0.85rem; color:#8fa1d0;">ID: <code>${esc(b.id)}</code></div>
+                        </div>
+                    </div>
+                    <p class="adm-shop-desc">${esc(b.desc || 'Aucune description')}</p>
+                    <div class="adm-shop-actions">
+                        <button class="adm-btn ${isUnlocked ? 'adm-btn-ok' : 'adm-btn-ghost'}" style="padding:4px 10px; font-size:0.85rem;" onclick="ADM.toggleBadgeUnlock('${esc(b.id)}')">
+                            ${isUnlocked ? '✓ Débloqué (Test)' : '🔒 Verrouillé'}
+                        </button>
+                        <div class="adm-row-actions">
+                            <button class="adm-ico-btn" title="Modifier" onclick="ADM.editBadge('${esc(b.id)}')">✏️ Modifier</button>
+                            <button class="adm-ico-btn danger" title="Supprimer" onclick="ADM.deleteBadge('${esc(b.id)}')">🗑️</button>
+                        </div>
+                    </div>
+                </div>`;
+        }).join('');
+
+        return `
+            <div class="adm-card">
+                <div class="adm-toolbar">
+                    <h2 style="margin:0;">🏆 Gestion des Succès &amp; Badges <small>${allBadges.length} succès</small></h2>
+                    <div class="adm-right" style="display:flex; gap:8px;">
+                        <button class="adm-btn adm-btn-ok" onclick="ADM.newBadge()">+ Ajouter un succès</button>
+                    </div>
+                </div>
+                <p class="adm-hint">Consultez, modifiez ou ajoutez des succès pour récompenser les élèves. Vous pouvez également tester leur déblocage en direct pour votre compte.</p>
+
+                <div class="adm-shop-filter-tabs">
+                    ${Object.keys(BADGE_CATEGORY_LABELS).map(k => `
+                        <button class="adm-shop-filter-btn ${cat === k ? 'active' : ''}" onclick="ADM.setBadgeCategory('${k}')">
+                            ${BADGE_CATEGORY_LABELS[k]} (${k === 'all' ? allBadges.length : allBadges.filter(i => (i.category || 'progression') === k).length})
+                        </button>
+                    `).join('')}
+                </div>
+
+                ${editor}
+
+                <div class="adm-shop-grid">
+                    ${badgeCards || '<div class="adm-empty" style="grid-column: 1/-1;">Aucun succès dans cette catégorie.</div>'}
+                </div>
+
+                <div class="adm-toolbar" style="margin-top:20px; border-top: 1px dashed rgba(154,167,216,0.2); padding-top: 14px; display:flex; gap:10px; flex-wrap:wrap;">
+                    <button class="adm-btn adm-btn-ghost" onclick="ADM.unlockAllBadges()">✨ Tout débloquer (test compte)</button>
+                    <button class="adm-btn adm-btn-ghost" onclick="ADM.resetUserBadges()">🔒 Réinitialiser mes succès</button>
+                    <button class="adm-btn adm-btn-danger adm-right" onclick="ADM.resetBadgesCatalog()">🔄 Rétablir le catalogue de succès par défaut</button>
+                </div>
+            </div>`;
+    }
+
+    function renderBadgeEditor(badge) {
+        const isNew = Boolean(badge._isNew);
+        return `
+            <div class="adm-editor" style="margin: 16px 0;">
+                <h3>${isNew ? '➕ Nouveau succès' : '✏️ Modifier le succès « ' + esc(badge.name) + ' »'}</h3>
+                <div class="adm-form">
+                    <div class="adm-grid-2">
+                        <div class="adm-field">
+                            <label>Identifiant unique (slug)</label>
+                            <input class="adm-input" id="admBadgeId" value="${esc(badge.id || '')}" ${isNew ? '' : 'readonly'} placeholder="ex: mon_succes">
+                        </div>
+                        <div class="adm-field">
+                            <label>Nom du succès</label>
+                            <input class="adm-input" id="admBadgeName" value="${esc(badge.name || '')}" placeholder="ex: Maître des Quiz">
+                        </div>
+                    </div>
+
+                    <div class="adm-grid-2">
+                        <div class="adm-field">
+                            <label>Icône / Émoji</label>
+                            <input class="adm-input" id="admBadgeIcon" value="${esc(badge.icon || '🏆')}" placeholder="ex: 🏆 ou 🎯" style="max-width:120px;">
+                        </div>
+                        <div class="adm-field">
+                            <label>Catégorie</label>
+                            <select class="adm-select" id="admBadgeCat">
+                                ${Object.keys(BADGE_CATEGORY_LABELS).filter(k => k !== 'all').map(k => `
+                                    <option value="${k}" ${(badge.category || 'progression') === k ? 'selected' : ''}>${BADGE_CATEGORY_LABELS[k]}</option>
+                                `).join('')}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="adm-field">
+                        <label>Description (condition montrée au joueur)</label>
+                        <input class="adm-input" id="admBadgeDesc" value="${esc(badge.desc || '')}" placeholder="ex: Réussis 10 quiz sans faire d'erreur.">
+                    </div>
+
+                    <div class="adm-field">
+                        <label>Condition technique (optionnelle)</label>
+                        <input class="adm-input" id="admBadgeCond" value="${esc(badge.condition || '')}" placeholder="ex: totalCompleted >= 10">
+                    </div>
+
+                    <div class="adm-form-actions" style="margin-top:14px; display:flex; gap:10px;">
+                        <button class="adm-btn adm-btn-ok" onclick="ADM.saveBadge()">💾 Enregistrer le succès</button>
+                        <button class="adm-btn adm-btn-ghost" onclick="ADM.cancelBadgeEdit()">Annuler</button>
+                    </div>
+                </div>
+            </div>`;
+    }
+
+    /* ============================== ONGLET : BOUTIQUE ============================== */
+
+    const SHOP_CATEGORY_LABELS = {
+        all: '🌟 Tous',
+        aura: '🔮 Auras & Halos',
+        avatar: '👤 Personnages',
+        title: '📜 Titres',
+        theme: '🎨 Thèmes',
+        booster: '⚡ Boosters',
+    };
+
+    function renderShop() {
+        const cat = S.shopCategory || 'all';
+        const allItems = (typeof AdminStore !== 'undefined') ? AdminStore.getShopItems() : [];
+        const filtered = cat === 'all' ? allItems : allItems.filter(it => it.category === cat);
+
+        const editor = S.editingShopItem ? renderShopItemEditor(S.editingShopItem) : '';
+
+        const itemCards = filtered.map((item) => {
+            return `
+                <div class="adm-shop-card ${item.disabled ? 'disabled' : ''}">
+                    <div class="adm-shop-card-head">
+                        <div class="adm-shop-orb" style="--sc:${esc(item.color || '#c8a84b')}">
+                            ${item.img ? `<img src="${esc(item.img)}" alt="">` : (item.icon || '✨')}
+                        </div>
+                        <div class="adm-shop-meta">
+                            <div class="adm-shop-title">
+                                <b>${esc(item.name)}</b>
+                                <span class="adm-badge adm-badge-type">${esc(SHOP_CATEGORY_LABELS[item.category] || item.category)}</span>
+                            </div>
+                            <div class="adm-shop-cost">🪙 ${item.cost === 0 ? 'Offert' : item.cost + ' pièces'}</div>
+                        </div>
+                    </div>
+                    <p class="adm-shop-desc">${esc(item.desc || 'Aucune description')}</p>
+                    <div class="adm-shop-actions">
+                        <span class="adm-badge ${item.disabled ? 'adm-badge-admin' : 'adm-badge-eleve'}">${item.disabled ? 'Désactivé' : 'Actif'}</span>
+                        <div class="adm-row-actions">
+                            <button class="adm-ico-btn" title="Modifier" onclick="ADM.editShopItem('${esc(item.id)}')">✏️ Modifier</button>
+                            <button class="adm-ico-btn danger" title="Supprimer" onclick="ADM.deleteShopItem('${esc(item.id)}')">🗑️</button>
+                        </div>
+                    </div>
+                </div>`;
+        }).join('');
+
+        return `
+            <div class="adm-card">
+                <div class="adm-toolbar">
+                    <h2 style="margin:0;">🛍️ Gestion de la Boutique <small>${allItems.length} article(s)</small></h2>
+                    <button class="adm-btn adm-btn-ok adm-right" onclick="ADM.newShopItem()">+ Ajouter un article</button>
+                </div>
+                <p class="adm-hint">Personnalisez les prix, l'apparence et ajoutez de nouveaux articles (Halos, Avatars, Titres, Thèmes, Boosters) pour motiver les élèves.</p>
+
+                <!-- Filtres de catégories -->
+                <div class="adm-shop-filter-tabs">
+                    ${Object.keys(SHOP_CATEGORY_LABELS).map(k => `
+                        <button class="adm-shop-filter-btn ${cat === k ? 'active' : ''}" onclick="ADM.setShopCategory('${k}')">
+                            ${SHOP_CATEGORY_LABELS[k]} (${k === 'all' ? allItems.length : allItems.filter(i => i.category === k).length})
+                        </button>
+                    `).join('')}
+                </div>
+
+                ${editor}
+
+                <div class="adm-shop-grid">
+                    ${itemCards || '<div class="adm-empty" style="grid-column: 1/-1;">Aucun article dans cette catégorie.</div>'}
+                </div>
+
+                <div class="adm-toolbar" style="margin-top:20px; border-top: 1px dashed rgba(154,167,216,0.2); padding-top: 14px;">
+                    <button class="adm-btn adm-btn-ghost" onclick="ADM.resetShopItems()">🔄 Rétablir la boutique par défaut</button>
+                </div>
+            </div>`;
+    }
+
+    function renderShopItemEditor(item) {
+        const isNew = Boolean(item._isNew);
+        return `
+            <div class="adm-editor" style="margin: 16px 0;">
+                <h3>${isNew ? '➕ Nouvel article de boutique' : '✏️ Modifier l\'article « ' + esc(item.name) + ' »'}</h3>
+                <div class="adm-form">
+                    <div class="adm-grid-2">
+                        <div class="adm-field">
+                            <label>Identifiant unique (slug)</label>
+                            <input class="adm-input" id="admShopId" value="${esc(item.id || '')}" ${isNew ? '' : 'readonly'} placeholder="ex: super-halo">
+                        </div>
+                        <div class="adm-field">
+                            <label>Nom affiché</label>
+                            <input class="adm-input" id="admShopName" value="${esc(item.name || '')}" placeholder="ex: Dragon Flamboyant" oninput="ADM.updateShopPreview()">
+                        </div>
+                    </div>
+
+                    <div class="adm-grid-2">
+                        <div class="adm-field">
+                            <label>Catégorie</label>
+                            <select class="adm-select" id="admShopCategory" onchange="ADM.updateShopPreview()">
+                                <option value="aura" ${item.category === 'aura' ? 'selected' : ''}>🔮 Aura / Halo</option>
+                                <option value="avatar" ${item.category === 'avatar' ? 'selected' : ''}>👤 Personnage / Avatar</option>
+                                <option value="title" ${item.category === 'title' ? 'selected' : ''}>📜 Titre honorifique</option>
+                                <option value="theme" ${item.category === 'theme' ? 'selected' : ''}>🎨 Thème & Effet</option>
+                                <option value="booster" ${item.category === 'booster' ? 'selected' : ''}>⚡ Booster d'XP / Bouclier</option>
+                            </select>
+                        </div>
+                        <div class="adm-field">
+                            <label>Prix (en pièces d'or)</label>
+                            <input class="adm-input" type="number" id="admShopCost" min="0" value="${item.cost ?? 50}" placeholder="0 = Offert" oninput="ADM.updateShopPreview()">
+                        </div>
+                    </div>
+
+                    <div class="adm-grid-2">
+                        <div class="adm-field">
+                            <label>Couleur du Halo / Aura (Hex)</label>
+                            <div style="display:flex; gap:8px;">
+                                <input class="adm-input" type="color" id="admShopColorPicker" value="${item.color || '#c8a84b'}" style="width:50px; padding:2px; height:38px; cursor:pointer;" onchange="document.getElementById('admShopColor').value = this.value; ADM.updateShopPreview();">
+                                <input class="adm-input" id="admShopColor" value="${esc(item.color || '#c8a84b')}" placeholder="#4fd8c4" oninput="document.getElementById('admShopColorPicker').value = this.value; ADM.updateShopPreview();">
+                            </div>
+                        </div>
+                        <div class="adm-field">
+                            <label>Chemin de l'image (pour avatar, optionnel)</label>
+                            <input class="adm-input" id="admShopImg" value="${esc(item.img || '')}" placeholder="ex: Image/personnages/lovelace.webp" oninput="ADM.updateShopPreview()">
+                        </div>
+                    </div>
+
+                    <div class="adm-field">
+                        <label>Description & Effet en jeu</label>
+                        <textarea class="adm-textarea" id="admShopDesc" rows="2" placeholder="Description de l'article visible dans la boutique...">${esc(item.desc || '')}</textarea>
+                    </div>
+
+                    <div class="adm-field" style="max-width:260px;">
+                        <label class="checkbox-container" style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                            <input type="checkbox" id="admShopDisabled" ${item.disabled ? 'checked' : ''}>
+                            <span style="font-size:14px; color:var(--ink);">Désactiver cet article</span>
+                        </label>
+                    </div>
+
+                    <!-- Live preview card -->
+                    <div style="margin: 10px 0; padding: 12px; background: rgba(7,11,26,0.5); border-radius: 10px; border: 1px dashed rgba(200,168,75,0.3);">
+                        <div style="font-size:12px; color:var(--muted); margin-bottom:6px; text-transform:uppercase;">Aperçu dans la boutique :</div>
+                        <div id="admShopLivePreview" style="display:inline-flex; align-items:center; gap:14px; background: rgba(13,19,48,0.9); padding:12px 18px; border-radius:12px; border:1px solid rgba(200,168,75,0.4);">
+                            <div class="adm-shop-orb" id="admPreviewOrb" style="--sc:${item.color || '#c8a84b'}; width:50px; height:50px; margin:0;">
+                                ${item.img ? `<img id="admPreviewImg" src="${esc(item.img)}" alt="">` : '<span id="admPreviewIcon">✨</span>'}
+                            </div>
+                            <div>
+                                <div id="admPreviewTitle" style="font-weight:700; color:#fff;">${esc(item.name || 'Nom de l\'article')}</div>
+                                <div id="admPreviewCost" style="font-size:12px; color:var(--gold);">🪙 ${item.cost === 0 ? 'Offert' : (item.cost || 50) + ' pièces'}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="adm-error" id="admShopErr"></div>
+                    <div class="adm-toolbar">
+                        <button class="adm-btn adm-btn-ok" onclick="ADM.saveShopItem()">💾 Enregistrer l'article</button>
+                        <button class="adm-btn adm-btn-ghost" onclick="ADM.cancelShopItem()">Annuler</button>
+                    </div>
+                </div>
+            </div>`;
+    }
+
+    /* ============================== ONGLET : RÉCOMPENSES ============================== */
+
+    function renderRewards() {
+        const r = (typeof AdminStore !== 'undefined') ? AdminStore.getRewardsConfig() : { xpBase: 15, coinsBase: 10, chronoBonusMaxXp: 15, dailyChestCoins: 50, firstTryBonusXp: 10, questRewardMultiplier: 1 };
+
+        return `
+            <div class="adm-card">
+                <h2>🎁 Gestion des Récompenses & de l'Économie</h2>
+                <p class="adm-hint">Réglez la générosité des gains en XP, en pièces et les bonus accordés aux élèves pour chaque action de jeu.</p>
+
+                <div class="adm-card" style="border-color: rgba(95,212,230,0.35); margin-top: 14px;">
+                    <h3 style="font-family:'Cinzel',serif; font-size:15px; color:var(--cyan); margin-bottom:12px;">🎯 Récompenses de base des Quiz</h3>
+                    <div class="adm-form">
+                        <div class="adm-grid-2">
+                            <div class="adm-field">
+                                <label>XP de base par niveau réussi</label>
+                                <input class="adm-input" type="number" id="admRwXpBase" min="1" max="500" value="${r.xpBase}">
+                                <span class="adm-hint">Par défaut : 15 XP.</span>
+                            </div>
+                            <div class="adm-field">
+                                <label>Pièces gagnées par niveau réussi</label>
+                                <input class="adm-input" type="number" id="admRwCoinsBase" min="0" max="500" value="${r.coinsBase}">
+                                <span class="adm-hint">Par défaut : 10 pièces.</span>
+                            </div>
+                        </div>
+                        <div class="adm-grid-2">
+                            <div class="adm-field">
+                                <label>Bonus max Mode Défi Chronométré (XP)</label>
+                                <input class="adm-input" type="number" id="admRwChronoXp" min="0" max="500" value="${r.chronoBonusMaxXp}">
+                                <span class="adm-hint">Calculé au prorata des secondes restantes (0s → 0 XP, 30s → max XP).</span>
+                            </div>
+                            <div class="adm-field">
+                                <label>Bonus premier coup sans faute (XP)</label>
+                                <input class="adm-input" type="number" id="admRwFirstTryXp" min="0" max="500" value="${r.firstTryBonusXp}">
+                                <span class="adm-hint">Bonus accordé si la bonne réponse est trouvée dès le premier essai.</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="adm-card" style="border-color: rgba(200,168,75,0.35); margin-top: 16px;">
+                    <h3 style="font-family:'Cinzel',serif; font-size:15px; color:var(--gold-soft); margin-bottom:12px;">📜 Quêtes Quotidiennes & Coffre Bonus</h3>
+                    <div class="adm-form">
+                        <div class="adm-grid-2">
+                            <div class="adm-field">
+                                <label>Pièces du coffre bonus quotidien</label>
+                                <input class="adm-input" type="number" id="admRwDailyChest" min="0" max="1000" value="${r.dailyChestCoins}">
+                                <span class="adm-hint">Débloqué lorsque toutes les 3 quêtes du jour sont accomplies.</span>
+                            </div>
+                            <div class="adm-field">
+                                <label>Multiplicateur des récompenses de quêtes</label>
+                                <input class="adm-input" type="number" step="0.1" min="0.1" max="5.0" id="admRwQuestMult" value="${r.questRewardMultiplier}">
+                                <span class="adm-hint">Ex: 1.5 pour +50% de gains sur toutes les quêtes journalières.</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="adm-toolbar" style="margin-top:16px;">
+                    <button class="adm-btn adm-btn-ok" onclick="ADM.rewardsSave()">💾 Enregistrer les récompenses</button>
+                    <button class="adm-btn adm-btn-ghost" onclick="ADM.rewardsReset()">Rétablir les valeurs par défaut</button>
+                </div>
+
+                <!-- Outil de crédit rapide pour tests de la boutique -->
+                <div class="adm-card" style="border-color: rgba(102,187,106,0.35); margin-top: 16px;">
+                    <h3 style="font-family:'Cinzel',serif; font-size:15px; color:var(--green); margin-bottom:8px;">💰 Outil de test de l'Économie (Portefeuille Local)</h3>
+                    <p class="adm-hint" style="margin-bottom:12px;">Ajoutez des pièces ou de l'XP sur cet appareil pour tester immédiatement les achats en boutique.</p>
+                    <div class="adm-toolbar">
+                        <button class="adm-btn adm-btn-ghost" onclick="ADM.grantPlayerReward(0, 100)">+100 Pièces 🪙</button>
+                        <button class="adm-btn adm-btn-ghost" onclick="ADM.grantPlayerReward(0, 500)">+500 Pièces 🪙</button>
+                        <button class="adm-btn adm-btn-ghost" onclick="ADM.grantPlayerReward(100, 0)">+100 XP ⚡</button>
+                        <button class="adm-btn adm-btn-danger adm-right" onclick="ADM.grantPlayerReward(0, 0, true)">Réinitialiser à 30 pièces & 0 XP</button>
+                    </div>
+                </div>
+
+                <!-- Catalogue des Succès / Badges -->
+                <div class="adm-card" style="margin-top: 16px;">
+                    <h3 style="font-family:'Cinzel',serif; font-size:15px; color:var(--gold-soft); margin-bottom:8px;">🏆 Succès & Badges Disponibles</h3>
+                    <div class="adm-table-wrap">
+                        <table class="adm-table">
+                            <thead><tr><th>Icône</th><th>Nom du Succès</th><th>Description / Condition</th><th>Statut</th></tr></thead>
+                            <tbody>
+                                <tr><td>🎯</td><td><b>Premier pas</b></td><td>Réussir sa toute première question de quiz</td><td><span class="adm-badge adm-badge-eleve">Actif</span></td></tr>
+                                <tr><td>✨</td><td><b>Sans-faute</b></td><td>Répondre juste du premier coup, sans réessayer</td><td><span class="adm-badge adm-badge-eleve">Actif</span></td></tr>
+                                <tr><td>🌐</td><td><b>Touche-à-tout</b></td><td>Terminer au moins une leçon dans chaque matière</td><td><span class="adm-badge adm-badge-eleve">Actif</span></td></tr>
+                                <tr><td>🏆</td><td><b>Expert(e)</b></td><td>Terminer toutes les leçons d'une même matière</td><td><span class="adm-badge adm-badge-eleve">Actif</span></td></tr>
+                                <tr><td>🎨</td><td><b>Collectionneur</b></td><td>Posséder au moins 3 skins différents dans la boutique</td><td><span class="adm-badge adm-badge-eleve">Actif</span></td></tr>
+                                <tr><td>🚀</td><td><b>Étoile montante</b></td><td>Atteindre le niveau 5 du joueur (400+ XP)</td><td><span class="adm-badge adm-badge-eleve">Actif</span></td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>`;
+    }
+
+    /* ============================== ONGLET : MEMBRES ============================== */
+
+    function renderMembers() {
+        const me = DB.getCurrentUser();
+        const rows = S.members.map(m => {
+            const isMe = me && m.email === me.email;
+            return `
+                <tr>
+                    <td>${esc(m.username)} ${isMe ? '<span class="adm-badge adm-badge-you">vous</span>' : ''}</td>
+                    <td>${esc(m.email)}</td>
+                    <td>${fmtDate(m.created)}</td>
+                    <td>
+                        <select class="adm-select" ${isMe ? 'disabled title="Vous ne pouvez pas changer votre propre rôle"' : ''}
+                            onchange="ADM.setRole('${esc(m.email)}', this.value)">
+                            <option value="eleve"${m.role !== 'admin' ? ' selected' : ''}>Élève</option>
+                            <option value="admin"${m.role === 'admin' ? ' selected' : ''}>Administrateur</option>
+                        </select>
+                    </td>
+                    <td>
+                        <div class="adm-row-actions">
+                            <button class="adm-ico-btn" title="Changer le pseudo" onclick="ADM.renameMember('${esc(m.email)}','${esc(m.username)}')">✏️</button>
+                            <button class="adm-ico-btn" title="Réinitialiser le mot de passe" onclick="ADM.resetPass('${esc(m.email)}')">🔑</button>
+                            <button class="adm-ico-btn danger" title="Supprimer le compte" ${isMe ? 'disabled' : ''} onclick="ADM.deleteMember('${esc(m.email)}','${esc(m.username)}')">🗑</button>
+                        </div>
+                    </td>
+                </tr>`;
+        }).join('');
+
+        const roleBadge = m => m.role === 'admin'
+            ? '<span class="adm-badge adm-badge-admin">Admin</span>'
+            : '<span class="adm-badge adm-badge-eleve">Élève</span>';
+
+        return `
+            <div class="adm-card">
+                <h2>👥 Membres <small>comptes du jeu (mode local)</small></h2>
+                <div class="adm-note">
+                    Les comptes permettent aux élèves de se connecter sur cet appareil (modale Se Connecter). En mode local,
+                    la <b>progression est liée à l'appareil</b>, pas au compte — utilisez « Réglages → Réinitialiser
+                    la progression » pour repartir de zéro.
+                </div>
+                <div class="adm-card" style="border-color:rgba(200,168,75,.35);">
+                    <h3 style="font-family:'Cinzel',serif; font-size:14px; color:var(--gold-soft); margin-bottom:10px;">➕ Créer un compte</h3>
+                    <div class="adm-form">
+                        <div class="adm-form-row">
+                            <div class="adm-field"><label>E-mail</label><input class="adm-input" id="admNewEmail" type="email" placeholder="eleve@ecole.fr"></div>
+                            <div class="adm-field"><label>Pseudo</label><input class="adm-input" id="admNewPseudo" placeholder="Camille"></div>
+                            <div class="adm-field"><label>Mot de passe (6 min.)</label><input class="adm-input" id="admNewPass" type="password"></div>
+                            <div class="adm-field" style="max-width:150px;"><label>Rôle</label>
+                                <select class="adm-select" id="admNewRole">
+                                    <option value="eleve">Élève</option>
+                                    <option value="admin">Administrateur</option>
+                                </select></div>
+                        </div>
+                        <div><button class="adm-btn" onclick="ADM.addMember()">Créer le compte</button></div>
+                    </div>
+                </div>
+                <div class="adm-table-wrap" style="margin-top:14px;">
+                    <table class="adm-table">
+                        <thead><tr><th>Pseudo</th><th>E-mail</th><th>Créé le</th><th>Rôle</th><th></th></tr></thead>
+                        <tbody>${rows || '<tr><td colspan="5" class="adm-empty">Aucun compte pour l\'instant.</td></tr>'}</tbody>
+                    </table>
+                </div>
+            </div>`;
+    }
+
+    /* ============================== ONGLET : RÉGLAGES ============================== */
+
+    function renderSettings() {
+        const siteCfg = (typeof AdminStore !== 'undefined') ? AdminStore.getSiteConfig() : {};
+        const aiCfg = (typeof AdminStore !== 'undefined') ? AdminStore.getAiConfig() : {};
+
+        return `
+            <div class="adm-card">
+                <div class="adm-toolbar">
+                    <h2 style="margin:0;">⚙️ Configuration Générale &amp; Gameplay du Site</h2>
+                    <span class="adm-badge adm-badge-system">v1.26.0</span>
+                </div>
+                <p class="adm-hint">Personnalisez ici tous les paramètres globaux de la plateforme EDUQUEST : titre, slogans, durée du chronomètre, multiplicateurs d'XP et de pièces, audio et inscriptions.</p>
+
+                <div class="adm-form" style="margin-top:14px;">
+                    <div class="adm-grid-2">
+                        <div class="adm-field">
+                            <label>Nom de la plateforme / Titre du site</label>
+                            <input class="adm-input" id="admSiteTitle" value="${esc(siteCfg.title || 'EDUQUEST')}" placeholder="EDUQUEST">
+                        </div>
+                        <div class="adm-field">
+                            <label>Slogan (Tagline)</label>
+                            <input class="adm-input" id="admSiteTagline" value="${esc(siteCfg.tagline || 'L\'aventure éducative gamifiée')}" placeholder="L'aventure éducative gamifiée">
+                        </div>
+                    </div>
+
+                    <div class="adm-field">
+                        <label>Annonce d'accueil / Message d'alerte (affiché sur l'accueil, optionnel)</label>
+                        <input class="adm-input" id="admSiteAnnouncement" value="${esc(siteCfg.announcement || '')}" placeholder="Ex: Bienvenue pour la rentrée ! Nouveaux quiz et défis disponibles.">
+                    </div>
+
+                    <div class="adm-grid-3">
+                        <div class="adm-field">
+                            <label>Chronomètre de quiz (secondes)</label>
+                            <input class="adm-input" type="number" id="admSiteTimer" min="10" max="300" value="${siteCfg.quizTimerSeconds || 45}">
+                        </div>
+                        <div class="adm-field">
+                            <label>Multiplicateur global d'XP</label>
+                            <input class="adm-input" type="number" step="0.1" min="0.1" max="10" id="admSiteXpMult" value="${siteCfg.xpMultiplier || 1}">
+                        </div>
+                        <div class="adm-field">
+                            <label>Multiplicateur global de pièces 🪙</label>
+                            <input class="adm-input" type="number" step="0.1" min="0.1" max="10" id="admSiteCoinMult" value="${siteCfg.coinMultiplier || 1}">
+                        </div>
+                    </div>
+
+                    <div class="adm-grid-2">
+                        <div class="adm-field">
+                            <label>Volume des effets sonores (%)</label>
+                            <input class="adm-input" type="range" id="admSiteSfxVol" min="0" max="100" value="${Math.round((siteCfg.sfxVolume ?? 0.7) * 100)}" oninput="document.getElementById('admSiteSfxVal').textContent=this.value+'%'">
+                            <span id="admSiteSfxVal" class="adm-hint">${Math.round((siteCfg.sfxVolume ?? 0.7) * 100)}%</span>
+                        </div>
+                        <div class="adm-field">
+                            <label>Volume de la musique d'ambiance (%)</label>
+                            <input class="adm-input" type="range" id="admSiteMusVol" min="0" max="100" value="${Math.round((siteCfg.musicVolume ?? 0.4) * 100)}" oninput="document.getElementById('admSiteMusVal').textContent=this.value+'%'">
+                            <span id="admSiteMusVal" class="adm-hint">${Math.round((siteCfg.musicVolume ?? 0.4) * 100)}%</span>
+                        </div>
+                    </div>
+
+                    <div class="adm-grid-2">
+                        <div class="adm-field" style="display:flex; align-items:center; gap:8px;">
+                            <input type="checkbox" id="admSiteAllowReg" ${siteCfg.allowRegistration !== false ? 'checked' : ''} style="width:18px; height:18px; cursor:pointer;">
+                            <label for="admSiteAllowReg" style="margin:0; cursor:pointer;">Autoriser la création de nouveaux comptes élèves</label>
+                        </div>
+                        <div class="adm-field" style="display:flex; align-items:center; gap:8px;">
+                            <input type="checkbox" id="admSiteSoundDef" ${siteCfg.soundEnabledByDefault ? 'checked' : ''} style="width:18px; height:18px; cursor:pointer;">
+                            <label for="admSiteSoundDef" style="margin:0; cursor:pointer;">Son activé par défaut à la première visite</label>
+                        </div>
+                    </div>
+
+                    <div class="adm-toolbar" style="margin-top:14px;">
+                        <button class="adm-btn adm-btn-ok" onclick="ADM.saveSiteSettings()">💾 Enregistrer la configuration du site</button>
+                        <button class="adm-btn adm-btn-ghost" onclick="ADM.resetSiteSettings()">Rétablir les valeurs de jeu par défaut</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="adm-card">
+                <div class="adm-toolbar">
+                    <h2 style="margin:0;">🤖 Configuration de l'IA &amp; Webhooks Make.com</h2>
+                    <span class="adm-badge adm-badge-type">Intégration Enseignant</span>
+                </div>
+                <p class="adm-hint">Configurez les webhooks Make pour la génération dynamique et la correction des questions par Intelligence Artificielle. En cas d'indisponibilité ou d'erreur réseau, le repli hors-ligne garantit une expérience fluide pour les élèves.</p>
+
+                <div class="adm-form" style="margin-top:14px;">
+                    <div class="adm-field">
+                        <label>Webhook de génération de questions (POST URL)</label>
+                        <input class="adm-input" id="admAiGenUrl" value="${esc(aiCfg.generateWebhookUrl || '')}" placeholder="https://hook.eu1.make.com/...">
+                    </div>
+                    <div class="adm-field">
+                        <label>Webhook de validation de questions (POST URL)</label>
+                        <input class="adm-input" id="admAiValUrl" value="${esc(aiCfg.validateWebhookUrl || '')}" placeholder="https://hook.eu1.make.com/...">
+                    </div>
+                    <div class="adm-grid-2">
+                        <div class="adm-field">
+                            <label>Timeout des requêtes IA (ms)</label>
+                            <input class="adm-input" type="number" id="admAiTimeout" min="1000" max="30000" step="500" value="${aiCfg.fetchTimeoutMs || 8000}">
+                        </div>
+                        <div class="adm-field" style="display:flex; align-items:center; gap:8px; margin-top:22px;">
+                            <input type="checkbox" id="admAiFallback" ${aiCfg.fallbackToOffline !== false ? 'checked' : ''} style="width:18px; height:18px; cursor:pointer;">
+                            <label for="admAiFallback" style="margin:0; cursor:pointer;">Repli automatique sur les questions hors-ligne</label>
+                        </div>
+                    </div>
+
+                    <div class="adm-toolbar" style="margin-top:14px;">
+                        <button class="adm-btn adm-btn-ok" onclick="ADM.saveAiSettings()">💾 Enregistrer les webhooks IA</button>
+                        <button class="adm-btn adm-btn-ghost" onclick="ADM.testAiSettings()">🧪 Tester la connexion IA</button>
+                        <button class="adm-btn adm-btn-ghost adm-right" onclick="ADM.resetAiSettings()">Rétablir par défaut</button>
+                    </div>
+                    <div id="admAiTestResult" style="margin-top:10px;"></div>
+                </div>
+            </div>
+
+            <div class="adm-card">
+                <h2>🗄️ Sauvegarde &amp; Restauration Intégrale du Site</h2>
+                <p class="adm-hint">Exportez l'intégralité des données du site (niveaux scolaires, matières, leçons manuelles, boutique, succès, récompenses économiques, crédits, configuration du site et IA) en un seul fichier JSON universel.</p>
+                <div class="adm-toolbar">
+                    <button class="adm-btn" onclick="ADM.exportConfig()">⬇️ Exporter toute la configuration</button>
+                    <button class="adm-btn adm-btn-ghost" onclick="ADM.downloadConfig()">💾 Télécharger (.json)</button>
+                </div>
+                <textarea class="adm-textarea" id="admExportArea" readonly placeholder="Cliquez sur « Exporter toute la configuration » pour afficher le JSON ici…" rows="5"></textarea>
+                <div style="margin-top:12px;">
+                    <button class="adm-btn" onclick="ADM.importConfig()">⬆️ Importer la configuration</button>
+                    <textarea class="adm-textarea" id="admImportArea" placeholder="Collez ici un JSON exporté puis cliquez sur « Importer la configuration »…" rows="5" style="margin-top:6px;"></textarea>
+                </div>
+            </div>
+
+            <div class="adm-card">
+                <h2 style="color:#ffab91;">☢️ Zone sensible &amp; Réinitialisations</h2>
+                <p class="adm-hint">Réinitialisez des modules individuels ou effacez les caches locaux de cet appareil.</p>
+                <div class="adm-toolbar" style="flex-wrap:wrap; gap:8px;">
+                    <button class="adm-btn adm-btn-danger" onclick="ADM.resetAdminConfig()">Réinitialiser TOUT le panneau</button>
+                    <button class="adm-btn adm-btn-ghost" onclick="ADM.levelsReset()">Niveaux scolaires par défaut</button>
+                    <button class="adm-btn adm-btn-ghost" onclick="ADM.resetShopItems()">Boutique par défaut</button>
+                    <button class="adm-btn adm-btn-ghost" onclick="ADM.resetBadgesCatalog()">Succès par défaut</button>
+                    <button class="adm-btn adm-btn-ghost" onclick="ADM.rewardsReset()">Récompenses par défaut</button>
+                    <button class="adm-btn adm-btn-danger adm-right" onclick="ADM.resetProgress()">Effacer la progression joueur (appareil)</button>
+                </div>
+            </div>`;
+    }
+
+    /* ============================== ONGLET : CRÉDITS (v1.20) ============================== */
+
+    function renderCredits() {
+        const c = AdminStore.getCredits();
+        return `
+            <div class="adm-card">
+                <h2>✨ Crédits du créateur</h2>
+                <p class="adm-hint">Ces informations apparaissent dans le <b>pied de page de toutes les
+                pages du jeu</b> et dans la <a href="legal.html" target="_blank"><b>page légale</b></a>
+                (mentions légales, confidentialité, cookies). Laissez un champ vide pour masquer
+                l'élément correspondant.</p>
+
+                <div class="adm-form">
+                    <div class="adm-field"><label>Nom du studio / du projet</label>
+                        <input class="adm-input" id="admCrStudio" maxlength="120" value="${esc(c.studioName)}" placeholder="EDUQUEST"></div>
+                    <div class="adm-field"><label>Accroche (tagline)</label>
+                        <input class="adm-input" id="admCrTagline" maxlength="120" value="${esc(c.tagline)}" placeholder="Apprendre en s'amusant"></div>
+                    <div class="adm-field"><label>Créateur / équipe (affiché « Créé par … »)</label>
+                        <input class="adm-input" id="admCrCreator" maxlength="120" value="${esc(c.creatorName)}" placeholder="Votre nom ou votre équipe"></div>
+                    <div class="adm-field"><label>Site web (optionnel)</label>
+                        <input class="adm-input" id="admCrWebsite" maxlength="200" value="${esc(c.website)}" placeholder="mon-site.fr"></div>
+                    <div class="adm-field"><label>Dépôt GitHub du projet (optionnel)</label>
+                        <input class="adm-input" id="admCrGithub" maxlength="200" value="${esc(c.githubUrl || '')}" placeholder="https://github.com/EDUQUEST2026-2027/EDUQUEST"></div>
+                    <div class="adm-field"><label>E-mail de contact (optionnel)</label>
+                        <input class="adm-input" id="admCrEmail" type="email" maxlength="200" value="${esc(c.contactEmail)}" placeholder="contact@mon-site.fr"></div>
+                    <div class="adm-field"><label>Note complémentaire (optionnelle, infobulle du pied de page)</label>
+                        <textarea class="adm-textarea" id="admCrNote" rows="2" maxlength="300" placeholder="Ex. : réalisé dans le cadre d'un projet scolaire…">${esc(c.extraNote)}</textarea></div>
+                </div>
+
+                <div class="adm-toolbar">
+                    <button class="adm-btn adm-btn-ok" onclick="ADM.creditsSave()">💾 Enregistrer les crédits</button>
+                    <button class="adm-btn adm-btn-ghost" onclick="ADM.creditsReset()">Rétablir les valeurs par défaut</button>
+                </div>
+                <p class="adm-hint" style="margin-top:8px;">Après enregistrement, rechargez la page du
+                jeu (F5) pour voir les crédits à jour dans le pied de page.</p>
+            </div>
+
+            <div class="adm-card">
+                <h2>⚖️ Informations légales</h2>
+                <p class="adm-hint">Le site est accompagné d'une <a href="legal.html" target="_blank">page
+                légale</a> alimentée automatiquement par ces crédits, et d'un <b>bandeau de consentement
+                aux cookies</b> (RGPD) affiché à la première visite du site.</p>
+                <div class="adm-toolbar">
+                    <a class="adm-btn adm-btn-ghost" href="legal.html" target="_blank">Ouvrir la page légale</a>
+                    <button class="adm-btn adm-btn-ghost" onclick="ADM.openCookieBanner()">🍪 Afficher le bandeau cookies</button>
+                </div>
+                <p class="adm-hint" id="admCrConsent" style="margin-top:8px;"></p>
+            </div>`;
+    }
+
+    /* ============================== ACTIONS — NIVEAUX ============================== */
+
+    const ADM = {
+        tab(id) { S.tab = id; renderPanel(); },
+        switchGate() { S.gate = S.gate === 'login' ? 'setup' : 'login'; S.err = ''; render(); },
+
+        /* ----- Connexion / premier admin ----- */
+        async login() {
+            setError('admLoginErr', '');
+            const email = (document.getElementById('admLoginEmail') || {}).value || '';
+            const pass = (document.getElementById('admLoginPass') || {}).value || '';
+            if (!email || !pass) { setError('admLoginErr', 'Renseignez l\'e-mail et le mot de passe.'); return; }
+            const r = await DB.login(email, pass);
+            if (!r.ok) { setError('admLoginErr', r.error || 'Connexion impossible.'); return; }
+            const me = DB.getCurrentUser();
+            if (!me || me.role !== 'admin') {
+                await DB.logout();
+                setError('admLoginErr', 'Ce compte n\'est pas administrateur (rôle « admin » requis).');
+                return;
+            }
+            S.authed = true;
+            render();
+            toast('Bienvenue dans le panneau d\'administration.', 'ok');
+        },
+
+        async setupFirst() {
+            setError('admSetErr', '');
+            const email = (document.getElementById('admSetEmail') || {}).value || '';
+            const pseudo = (document.getElementById('admSetPseudo') || {}).value || '';
+            const pass = (document.getElementById('admSetPass') || {}).value || '';
+            if (!email || !pseudo || !pass) { setError('admSetErr', 'Tous les champs sont requis.'); return; }
+            const r = await DB.createLocalMember(email, pseudo, pass, 'admin');
+            if (!r.ok) { setError('admSetErr', r.error || 'Création impossible.'); return; }
+            const login = await DB.login(email, pass);
+            if (!login.ok) { setError('admSetErr', 'Compte créé, mais connexion impossible.'); return; }
+            S.authed = true;
+            render();
+            toast('Administrateur créé. Bienvenue !', 'ok');
+        },
+
+        logout() {
+            DB.logout();
+            S.authed = false;
+            S.subjectId = null; S.editingLesson = null; S.lessonDraft = null;
+            render();
+        },
+
+        /* ----- Niveaux scolaires ----- */
+        lvl(i, key, value) { if (S.levelsDraft && S.levelsDraft[i]) S.levelsDraft[i][key] = value; },
+        lvlAdd() { S.levelsDraft = S.levelsDraft || []; S.levelsDraft.push({ id: '', label: '', band: 'college' }); renderTabContent(); },
+        lvlDelete(i) {
+            if (!S.levelsDraft) return;
+            if (S.levelsDraft.length <= 1) { toast('Il faut au moins un niveau scolaire.', 'err'); return; }
+            S.levelsDraft.splice(i, 1);
+            renderTabContent();
+        },
+        lvlMove(i, dir) {
+            const j = i + dir;
+            if (!S.levelsDraft || j < 0 || j >= S.levelsDraft.length) return;
+            const tmp = S.levelsDraft[i]; S.levelsDraft[i] = S.levelsDraft[j]; S.levelsDraft[j] = tmp;
+            renderTabContent();
+        },
+        levelsSave() {
+            const r = AdminStore.saveLevels(S.levelsDraft);
+            if (!r.ok) { toast(r.error || 'Enregistrement impossible.', 'err'); return; }
+            S.levelsDraft = null;
+            renderTabContent();
+            toast('Niveaux scolaires enregistrés ✔', 'ok');
+        },
+        levelsCancel() { S.levelsDraft = null; renderTabContent(); },
+        levelsReset() {
+            if (!confirm('Rétablir les niveaux scolaires par défaut (6ème → Terminale) ?')) return;
+            AdminStore.resetLevels();
+            S.levelsDraft = null;
+            renderTabContent();
+            toast('Niveaux par défaut rétablis.', 'ok');
+        },
+
+        /* ----- Matières ----- */
+        openSubject(id) {
+            S.subjectId = id || null;
+            S.editingLesson = null;
+            S.lessonDraft = null;
+            S.subjectList = [];
+            renderTabContent();
+        },
+        onSubjectIslandSelect(val, inputId, previewId) {
+            const input = document.getElementById(inputId);
+            if (input) {
+                input.value = val;
+            }
+            this.updateSubjectIconPreview(inputId, previewId);
+        },
+        updateSubjectIconPreview(inputId, previewId) {
+            const input = document.getElementById(inputId);
+            const preview = document.getElementById(previewId);
+            if (!preview) return;
+            const val = input ? input.value : '';
+            preview.innerHTML = renderSubjectIcon(val);
+        },
+        handleSubjectImageUpload(fileInput, targetInputId, previewId) {
+            if (!fileInput || !fileInput.files || !fileInput.files[0]) return;
+            const file = fileInput.files[0];
+            if (!file.type.startsWith('image/')) {
+                toast('Veuillez sélectionner un fichier image valide.', 'err');
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const rawDataUrl = e.target.result;
+                const img = new Image();
+                img.onload = () => {
+                    try {
+                        const maxDim = 160;
+                        let w = img.width;
+                        let h = img.height;
+                        if (w > maxDim || h > maxDim) {
+                            if (w > h) {
+                                h = Math.round((h * maxDim) / w);
+                                w = maxDim;
+                            } else {
+                                w = Math.round((w * maxDim) / h);
+                                h = maxDim;
+                            }
+                        }
+                        const canvas = document.createElement('canvas');
+                        canvas.width = w;
+                        canvas.height = h;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, w, h);
+                        const optimizedDataUrl = canvas.toDataURL(file.type === 'image/png' ? 'image/png' : 'image/webp', 0.88);
+                        const targetInput = document.getElementById(targetInputId);
+                        if (targetInput) targetInput.value = optimizedDataUrl;
+                        ADM.updateSubjectIconPreview(targetInputId, previewId);
+                        toast('Image chargée et optimisée ✔', 'ok');
+                    } catch (err) {
+                        const targetInput = document.getElementById(targetInputId);
+                        if (targetInput) targetInput.value = rawDataUrl;
+                        ADM.updateSubjectIconPreview(targetInputId, previewId);
+                        toast('Image chargée ✔', 'ok');
+                    }
+                };
+                img.onerror = () => {
+                    const targetInput = document.getElementById(targetInputId);
+                    if (targetInput) targetInput.value = rawDataUrl;
+                    ADM.updateSubjectIconPreview(targetInputId, previewId);
+                    toast('Image chargée ✔', 'ok');
+                };
+                img.src = rawDataUrl;
+            };
+            reader.readAsDataURL(file);
+        },
+        createSubject() {
+            const name = (document.getElementById('admNewName') || {}).value || '';
+            const icon = (document.getElementById('admNewIcon') || {}).value || '';
+            const band = (document.getElementById('admNewBand') || {}).value || 'all';
+            const r = AdminStore.createCustomSubject(name, icon, null, { band });
+            if (!r.ok) { toast(r.error || 'Création impossible.', 'err'); return; }
+            S.subjectList = [];
+            S.subjectId = r.id;
+            renderTabContent();
+            toast('Matière « ' + name + ' » créée. Ajoutez vos leçons.', 'ok');
+        },
+        saveMeta() {
+            if (!S.subjectId) return;
+            const name = (document.getElementById('admMetaName') || {}).value || '';
+            const icon = (document.getElementById('admMetaIcon') || {}).value || '';
+            const band = (document.getElementById('admMetaBand') || {}).value || 'all';
+            const enabled = Boolean((document.getElementById('admMetaEnabled') || {}).checked);
+            const description = (document.getElementById('admMetaDesc') || {}).value || '';
+
+            const sub = subjectList().find(x => x.id === S.subjectId);
+            const allowedNiveaux = sub ? (sub.allowedNiveaux || []) : [];
+
+            const r = AdminStore.saveSubjectMeta(S.subjectId, { name, icon, band, enabled, description, allowedNiveaux });
+            if (!r.ok) { toast(r.error || 'Enregistrement impossible.', 'err'); return; }
+            S.subjectList = [];
+            renderTabContent();
+            toast('Matière et réglages de niveaux enregistrés ✔', 'ok');
+        },
+        onBandChange(band) {
+            if (!S.subjectId) return;
+            const sub = subjectList().find(x => x.id === S.subjectId);
+            if (!sub) return;
+            sub.band = band;
+            const allLevels = AdminStore.getLevels();
+            if (band === 'college') {
+                sub.allowedNiveaux = allLevels.filter(l => l.band === 'college').map(l => l.id);
+            } else if (band === 'lycee') {
+                sub.allowedNiveaux = allLevels.filter(l => l.band === 'lycee').map(l => l.id);
+            } else {
+                sub.allowedNiveaux = allLevels.map(l => l.id);
+            }
+            AdminStore.saveSubjectMeta(S.subjectId, { band, allowedNiveaux: sub.allowedNiveaux });
+            S.subjectList = [];
+            renderTabContent();
+            toast('Cycle mis à jour : ' + (band === 'college' ? 'Collège' : band === 'lycee' ? 'Lycée' : 'Tous cycles'), 'ok');
+        },
+        toggleSubjectGrade(gradeId) {
+            if (!S.subjectId) return;
+            const sub = subjectList().find(x => x.id === S.subjectId);
+            if (!sub) return;
+            const allLevels = AdminStore.getLevels();
+            let current = Array.isArray(sub.allowedNiveaux) && sub.allowedNiveaux.length ? sub.allowedNiveaux.slice() : allLevels.map(l => l.id);
+            if (current.includes(gradeId)) {
+                current = current.filter(id => id !== gradeId);
+            } else {
+                current.push(gradeId);
+            }
+            sub.allowedNiveaux = current;
+            AdminStore.saveSubjectMeta(S.subjectId, { allowedNiveaux: current });
+            S.subjectList = [];
+            renderTabContent();
+        },
+        setAllSubjectGrades(checked) {
+            if (!S.subjectId) return;
+            const sub = subjectList().find(x => x.id === S.subjectId);
+            if (!sub) return;
+            const allLevels = AdminStore.getLevels();
+            const current = checked ? allLevels.map(l => l.id) : [];
+            sub.allowedNiveaux = current;
+            AdminStore.saveSubjectMeta(S.subjectId, { allowedNiveaux: current });
+            S.subjectList = [];
+            renderTabContent();
+        },
+        setSubjectSubTab(tab) {
+            S.subjectSubTab = tab;
+            renderTabContent();
+        },
+        changeStudyGrade(grade) {
+            S.studyGrade = grade;
+            renderTabContent();
+        },
+        nextQuestionVariant() {
+            S.questionVariant = (S.questionVariant || 0) + 1;
+            renderTabContent();
+            toast('Nouvelle variante n° ' + S.questionVariant + ' générée 🎲', 'ok');
+        },
+        resetQuestionVariant() {
+            S.questionVariant = 0;
+            renderTabContent();
+            toast('Variante aléatoire réinitialisée.', 'ok');
+        },
+        importProceduralQuestion(idx) {
+            if (!S.subjectId) return;
+            const sub = subjectList().find(x => x.id === S.subjectId);
+            if (!sub) return;
+            const generated = (AdminStore.getSubjectQuestionsForGrade(sub.id, S.studyGrade, S.questionVariant, 8) || {}).generated || [];
+            const q = generated[idx];
+            if (!q) { toast('Question introuvable.', 'err'); return; }
+            const lessons = JSON.parse(JSON.stringify(sub.lessons || []));
+            const clean = AdminStore.normalizeLesson({
+                type: q.type || 'qcm',
+                title: q.title || `Niveau ${lessons.length + 1} (${esc(S.studyGrade.toUpperCase())})`,
+                q: q.q || '',
+                opts: q.opts,
+                correct: q.correct,
+                accepted: q.accepted,
+                textWithBlanks: q.textWithBlanks,
+                blanks: q.blanks,
+                items: q.items,
+                targets: q.targets,
+                pairs: q.pairs,
+                exp: q.exp || '',
+            });
+            lessons.push(clean);
+            const r = AdminStore.saveLessons(sub.id, lessons);
+            if (!r.ok) { toast(r.error || 'Erreur lors de l\'import.', 'err'); return; }
+            S.subjectList = [];
+            S.subjectSubTab = 'manual';
+            renderTabContent();
+            toast('Question importée avec succès comme leçon manuelle (niveau ' + lessons.length + ') ✔', 'ok');
+        },
+        testLesson(i) {
+            if (!S.subjectId) return;
+            const sub = subjectList().find(x => x.id === S.subjectId);
+            if (!sub || !sub.lessons[i]) return;
+            S.testModalQuestion = JSON.parse(JSON.stringify(sub.lessons[i]));
+            S.testModalAnswer = null;
+            S.testModalResult = null;
+            renderTabContent();
+        },
+        testProceduralQuestion(idx) {
+            if (!S.subjectId) return;
+            const generated = (AdminStore.getSubjectQuestionsForGrade(S.subjectId, S.studyGrade, S.questionVariant, 8) || {}).generated || [];
+            const q = generated[idx];
+            if (!q) return;
+            S.testModalQuestion = JSON.parse(JSON.stringify(q));
+            S.testModalAnswer = null;
+            S.testModalResult = null;
+            renderTabContent();
+        },
+        closeTestModal() {
+            S.testModalQuestion = null;
+            S.testModalAnswer = null;
+            S.testModalResult = null;
+            renderTabContent();
+        },
+        selectTestAnswer(ans) {
+            S.testModalAnswer = ans;
+            renderTabContent();
+        },
+        submitTestAnswer() {
+            const q = S.testModalQuestion;
+            if (!q) return;
+            if (S.testModalAnswer === null || S.testModalAnswer === undefined || S.testModalAnswer === '') {
+                toast('Veuillez sélectionner ou saisir une réponse.', 'err');
+                return;
+            }
+            let isCorrect = false;
+            let correctStr = '';
+            const type = q.type || 'qcm';
+
+            if (typeof QuizEngine !== 'undefined' && typeof QuizEngine.grade === 'function') {
+                isCorrect = QuizEngine.grade(q, S.testModalAnswer);
+            } else {
+                if (type === 'qcm') isCorrect = Number(S.testModalAnswer) === Number(q.correct);
+                else if (type === 'vrai_faux') isCorrect = Boolean(S.testModalAnswer) === Boolean(q.correct);
+                else if (type === 'reponse_courte') {
+                    const acc = (q.accepted || []).map(s => String(s).trim().toLowerCase());
+                    isCorrect = acc.includes(String(S.testModalAnswer).trim().toLowerCase());
+                } else {
+                    isCorrect = true;
+                }
+            }
+
+            if (type === 'qcm') {
+                const opts = Array.isArray(q.opts) ? q.opts : [];
+                const cIdx = Number(q.correct);
+                correctStr = opts[cIdx] ? `${String.fromCharCode(65 + cIdx)}. ${opts[cIdx]}` : `Option ${String.fromCharCode(65 + cIdx)}`;
+            } else if (type === 'vrai_faux') {
+                correctStr = q.correct === true ? 'Vrai' : 'Faux';
+            } else if (type === 'reponse_courte') {
+                correctStr = (q.accepted || []).join(' ou ');
+            } else if (type === 'texte_a_trous') {
+                correctStr = (q.blanks || []).map(b => (b || []).join('/')).join(', ');
+            } else {
+                correctStr = 'Association conforme';
+            }
+
+            S.testModalResult = {
+                isCorrect,
+                correctStr,
+                exp: q.exp || '',
+            };
+            renderTabContent();
+        },
+        deleteSubject() {
+            if (!S.subjectId) return;
+            const sub = subjectList().find(x => x.id === S.subjectId);
+            if (!sub) return;
+            if (!confirm('Supprimer définitivement la matière « ' + sub.name + ' » et ses leçons ?')) return;
+            const r = AdminStore.deleteCustomSubject(S.subjectId);
+            if (!r.ok) { toast(r.error || 'Suppression impossible.', 'err'); return; }
+            S.subjectId = null; S.subjectList = [];
+            renderTabContent();
+            toast('Matière supprimée.', 'ok');
+        },
+        resetSubject() {
+            if (!S.subjectId) return;
+            if (!confirm('Retirer toutes les modifications (nom, icône, leçons) de cette matière ?')) return;
+            AdminStore.resetSubject(S.subjectId);
+            S.subjectList = [];
+            S.editingLesson = null; S.lessonDraft = null;
+            renderTabContent();
+            toast('Matière rétablie à l\'original.', 'ok');
+        },
+
+        /* ----- Leçons ----- */
+        newLesson() {
+            if (!S.subjectId) return;
+            S.editingLesson = -1;
+            S.lessonDraft = { type: 'qcm', title: '', q: '', opts: ['', '', '', ''], correct: 0, exp: '' };
+            renderTabContent();
+        },
+        editLesson(i) {
+            if (!S.subjectId) return;
+            const sub = subjectList().find(x => x.id === S.subjectId);
+            if (!sub || !sub.lessons[i]) return;
+            S.editingLesson = i;
+            S.lessonDraft = JSON.parse(JSON.stringify(sub.lessons[i]));
+            S.lessonDraft.type = S.lessonDraft.type || 'qcm';
+            renderTabContent();
+        },
+        cancelLesson() { S.editingLesson = null; S.lessonDraft = null; renderTabContent(); },
+        lessonType(type) {
+            // Conserve les champs communs (titre, question, explication) quand on change de type
+            const d = S.lessonDraft || {};
+            const common = { title: d.title, exp: d.exp };
+            S.lessonDraft = { type };
+            if (type === 'qcm') Object.assign(S.lessonDraft, { q: d.q, opts: ['', '', '', ''], correct: 0 }, common);
+            else if (type === 'vrai_faux') Object.assign(S.lessonDraft, { q: d.q, correct: true }, common);
+            else if (type === 'reponse_courte') Object.assign(S.lessonDraft, { q: d.q, accepted: [''] }, common);
+            else if (type === 'texte_a_trous') Object.assign(S.lessonDraft, { textWithBlanks: d.textWithBlanks || '', blanks: [['']] }, common);
+            else Object.assign(S.lessonDraft, { q: d.q, items: ['', ''], targets: ['', ''] }, common);
+            renderTabContent();
+        },
+        lessonSave() {
+            if (!S.subjectId) return;
+            const lesson = readLessonForm();
+            const err = AdminStore.validateLesson(lesson);
+            if (err) { setError('admLessonErr', err); return; }
+            const clean = AdminStore.normalizeLesson(lesson);
+            const sub = subjectList().find(x => x.id === S.subjectId);
+            if (!sub) return;
+            const lessons = JSON.parse(JSON.stringify(sub.lessons || []));
+            if (S.editingLesson === -1) lessons.push(clean);
+            else lessons[S.editingLesson] = clean;
+            const r = AdminStore.saveLessons(S.subjectId, lessons);
+            if (!r.ok) { setError('admLessonErr', r.error || 'Enregistrement impossible.'); return; }
+            S.subjectList = [];
+            S.editingLesson = null; S.lessonDraft = null;
+            renderTabContent();
+            toast('Leçon enregistrée ✔', 'ok');
+        },
+        deleteLesson(i) {
+            if (!S.subjectId) return;
+            if (!confirm('Supprimer la leçon ' + (i + 1) + ' ?')) return;
+            const sub = subjectList().find(x => x.id === S.subjectId);
+            if (!sub) return;
+            const lessons = JSON.parse(JSON.stringify(sub.lessons || []));
+            if (lessons.length <= 1) { toast('Une matière doit garder au moins une leçon.', 'err'); return; }
+            lessons.splice(i, 1);
+            const r = AdminStore.saveLessons(S.subjectId, lessons);
+            if (!r.ok) { toast(r.error || 'Suppression impossible.', 'err'); return; }
+            S.subjectList = [];
+            renderTabContent();
+            toast('Leçon supprimée.', 'ok');
+        },
+        lessonMove(i, dir) {
+            if (!S.subjectId) return;
+            const sub = subjectList().find(x => x.id === S.subjectId);
+            if (!sub) return;
+            const lessons = JSON.parse(JSON.stringify(sub.lessons || []));
+            const j = i + dir;
+            if (j < 0 || j >= lessons.length) return;
+            const tmp = lessons[i]; lessons[i] = lessons[j]; lessons[j] = tmp;
+            const r = AdminStore.saveLessons(S.subjectId, lessons);
+            if (!r.ok) { toast(r.error || 'Déplacement impossible.', 'err'); return; }
+            S.subjectList = [];
+            renderTabContent();
+        },
+
+        /* ----- Boutique ----- */
+        setShopCategory(cat) {
+            S.shopCategory = cat;
+            renderTabContent();
+        },
+        newShopItem() {
+            S.editingShopItem = {
+                _isNew: true,
+                id: '',
+                name: '',
+                category: S.shopCategory && S.shopCategory !== 'all' ? S.shopCategory : 'aura',
+                cost: 100,
+                color: '#c8a84b',
+                img: '',
+                desc: '',
+                disabled: false
+            };
+            renderTabContent();
+        },
+        editShopItem(id) {
+            const item = AdminStore.getShopItem(id);
+            if (!item) return;
+            S.editingShopItem = JSON.parse(JSON.stringify(item));
+            renderTabContent();
+        },
+        cancelShopItem() {
+            S.editingShopItem = null;
+            renderTabContent();
+        },
+        updateShopPreview() {
+            const name = (document.getElementById('admShopName') || {}).value || 'Nom de l\'article';
+            const cost = parseInt((document.getElementById('admShopCost') || {}).value || '0', 10);
+            const color = (document.getElementById('admShopColor') || {}).value || '#c8a84b';
+            const img = (document.getElementById('admShopImg') || {}).value || '';
+
+            const t = document.getElementById('admPreviewTitle');
+            const c = document.getElementById('admPreviewCost');
+            const orb = document.getElementById('admPreviewOrb');
+            if (t) t.textContent = name;
+            if (c) c.textContent = '🪙 ' + (cost === 0 ? 'Offert' : cost + ' pièces');
+            if (orb) {
+                orb.style.setProperty('--sc', color);
+                orb.innerHTML = img ? `<img src="${esc(img)}" alt="">` : '<span>✨</span>';
+            }
+        },
+        saveShopItem() {
+            const id = (document.getElementById('admShopId') || {}).value || '';
+            const name = (document.getElementById('admShopName') || {}).value || '';
+            const category = (document.getElementById('admShopCategory') || {}).value || 'aura';
+            const cost = parseInt((document.getElementById('admShopCost') || {}).value || '0', 10);
+            const color = (document.getElementById('admShopColor') || {}).value || '#c8a84b';
+            const img = (document.getElementById('admShopImg') || {}).value || '';
+            const desc = (document.getElementById('admShopDesc') || {}).value || '';
+            const disabled = Boolean((document.getElementById('admShopDisabled') || {}).checked);
+
+            const r = AdminStore.saveShopItem({ id, name, category, cost, color, img, desc, disabled });
+            if (!r.ok) {
+                setError('admShopErr', r.error || 'Erreur d\'enregistrement.');
+                return;
+            }
+            S.editingShopItem = null;
+            renderTabContent();
+            toast('Article « ' + name + ' » enregistré ✔', 'ok');
+        },
+        deleteShopItem(id) {
+            const item = AdminStore.getShopItem(id);
+            if (!item) return;
+            if (!confirm('Supprimer ou masquer l\'article « ' + item.name + ' » de la boutique ?')) return;
+            AdminStore.deleteShopItem(id);
+            if (S.editingShopItem && S.editingShopItem.id === id) S.editingShopItem = null;
+            renderTabContent();
+            toast('Article supprimé de la boutique.', 'ok');
+        },
+        resetShopItems() {
+            if (!confirm('Rétablir tous les articles par défaut de la boutique ?')) return;
+            AdminStore.resetShopItems();
+            S.editingShopItem = null;
+            renderTabContent();
+            toast('Boutique réinitialisée aux articles d\'origine.', 'ok');
+        },
+
+        /* ----- Récompenses & Économie ----- */
+        rewardsSave() {
+            const xpBase = parseInt((document.getElementById('admRwXpBase') || {}).value, 10);
+            const coinsBase = parseInt((document.getElementById('admRwCoinsBase') || {}).value, 10);
+            const chronoBonusMaxXp = parseInt((document.getElementById('admRwChronoXp') || {}).value, 10);
+            const dailyChestCoins = parseInt((document.getElementById('admRwDailyChest') || {}).value, 10);
+            const firstTryBonusXp = parseInt((document.getElementById('admRwFirstTryXp') || {}).value, 10);
+            const questRewardMultiplier = parseFloat((document.getElementById('admRwQuestMult') || {}).value);
+
+            const r = AdminStore.saveRewardsConfig({
+                xpBase, coinsBase, chronoBonusMaxXp, dailyChestCoins, firstTryBonusXp, questRewardMultiplier
+            });
+            if (!r.ok) {
+                toast(r.error || 'Erreur lors de la sauvegarde des récompenses.', 'err');
+                return;
+            }
+            renderTabContent();
+            toast('Récompenses et paramètres économiques enregistrés ✔', 'ok');
+        },
+        rewardsReset() {
+            if (!confirm('Rétablir les récompenses par défaut ?')) return;
+            AdminStore.resetRewardsConfig();
+            renderTabContent();
+            toast('Récompenses rétablies par défaut.', 'ok');
+        },
+        grantPlayerReward(xp, coins, reset = false) {
+            let currentXp = parseInt(DB.getOption('dash_xp') || '0', 10);
+            let currentCoins = parseInt(DB.getOption('dash_coins') || '30', 10);
+            if (reset) {
+                currentXp = 0;
+                currentCoins = 30;
+                DB.saveOption('dash_xp', '0');
+                DB.saveOption('dash_coins', '30');
+                toast('Portefeuille local réinitialisé à 30 pièces.', 'ok');
+            } else {
+                currentXp += xp;
+                currentCoins += coins;
+                DB.saveOption('dash_xp', String(currentXp));
+                DB.saveOption('dash_coins', String(currentCoins));
+                toast(`Ajouté avec succès : +${xp} XP et +${coins} pièces !`, 'ok');
+            }
+        },
+
+        /* ----- Membres ----- */
+        async addMember() {
+            const email = (document.getElementById('admNewEmail') || {}).value || '';
+            const pseudo = (document.getElementById('admNewPseudo') || {}).value || '';
+            const pass = (document.getElementById('admNewPass') || {}).value || '';
+            const role = (document.getElementById('admNewRole') || {}).value || 'eleve';
+            const r = await DB.createLocalMember(email, pseudo, pass, role);
+            if (!r.ok) { toast(r.error || 'Création impossible.', 'err'); return; }
+            await refreshMembers();
+            renderTabContent();
+            toast('Compte « ' + pseudo + ' » créé ✔', 'ok');
+        },
+        async setRole(email, role) {
+            const r = await DB.updateLocalMember(email, { role });
+            if (!r.ok) { toast(r.error || 'Changement impossible.', 'err'); }
+            else { toast('Rôle mis à jour ✔', 'ok'); }
+            await refreshMembers();
+            renderTabContent();
+        },
+        async renameMember(email, currentName) {
+            const name = prompt('Nouveau pseudo pour « ' + currentName + ' » :', currentName);
+            if (name === null) return;
+            const me = DB.getCurrentUser();
+            const r = me && me.email === email
+                ? await DB.updateProfile({ username: name })
+                : await DB.updateLocalMember(email, { username: name });
+            if (!r.ok) { toast(r.error || 'Modification impossible.', 'err'); }
+            else { toast('Pseudo mis à jour ✔', 'ok'); }
+            await refreshMembers();
+            renderTabContent();
+        },
+        async resetPass(email) {
+            const pw = prompt('Nouveau mot de passe pour ' + email + ' (6 caractères minimum) :');
+            if (!pw) return;
+            const me = DB.getCurrentUser();
+            const r = me && me.email === email
+                ? await DB.updateProfile({ password: pw })
+                : await DB.updateLocalMember(email, { password: pw });
+            if (!r.ok) { toast(r.error || 'Modification impossible.', 'err'); }
+            else { toast('Mot de passe réinitialisé ✔', 'ok'); }
+        },
+        async deleteMember(email, username) {
+            if (!confirm('Supprimer définitivement le compte « ' + username + ' » (' + email + ') ?')) return;
+            const r = await DB.deleteLocalMember(email);
+            if (!r.ok) { toast(r.error || 'Suppression impossible.', 'err'); return; }
+            await refreshMembers();
+            renderTabContent();
+            toast('Compte supprimé.', 'ok');
+        },
+
+        /* ----- Réglages ----- */
+        async updateProfile() {
+            const pseudo = (document.getElementById('admMePseudo') || {}).value || '';
+            const pass = (document.getElementById('admMePass') || {}).value || '';
+            const patch = {};
+            if (pseudo) patch.username = pseudo;
+            if (pass) patch.password = pass;
+            if (!Object.keys(patch).length) { toast('Rien à enregistrer.', 'err'); return; }
+            const r = await DB.updateProfile(patch);
+            if (!r.ok) { toast(r.error || 'Modification impossible.', 'err'); return; }
+            renderPanel();
+            toast('Profil mis à jour ✔', 'ok');
+        },
+        saveSiteSettings() {
+            const title = (document.getElementById('admSiteTitle') || {}).value;
+            const tagline = (document.getElementById('admSiteTagline') || {}).value;
+            const announcement = (document.getElementById('admSiteAnnouncement') || {}).value;
+            const quizTimerSeconds = parseInt((document.getElementById('admSiteTimer') || {}).value, 10);
+            const xpMultiplier = parseFloat((document.getElementById('admSiteXpMult') || {}).value);
+            const coinMultiplier = parseFloat((document.getElementById('admSiteCoinMult') || {}).value);
+            const sfxVol = parseInt((document.getElementById('admSiteSfxVol') || {}).value, 10);
+            const musVol = parseInt((document.getElementById('admSiteMusVol') || {}).value, 10);
+            const allowRegistration = Boolean((document.getElementById('admSiteAllowReg') || {}).checked);
+            const soundEnabledByDefault = Boolean((document.getElementById('admSiteSoundDef') || {}).checked);
+
+            const r = AdminStore.saveSiteConfig({
+                title, tagline, announcement, quizTimerSeconds, xpMultiplier, coinMultiplier,
+                sfxVolume: isNaN(sfxVol) ? 0.7 : sfxVol / 100,
+                musicVolume: isNaN(musVol) ? 0.4 : musVol / 100,
+                allowRegistration, soundEnabledByDefault
+            });
+            if (!r.ok) { toast(r.error || 'Erreur lors de la sauvegarde.', 'err'); return; }
+            renderTabContent();
+            toast('Configuration générale du site enregistrée ✔', 'ok');
+        },
+        resetSiteSettings() {
+            if (!confirm('Rétablir la configuration générale par défaut du site ?')) return;
+            AdminStore.resetSiteConfig();
+            renderTabContent();
+            toast('Configuration du site réinitialisée par défaut.', 'ok');
+        },
+        saveAiSettings() {
+            const generateWebhookUrl = (document.getElementById('admAiGenUrl') || {}).value;
+            const validateWebhookUrl = (document.getElementById('admAiValUrl') || {}).value;
+            const fetchTimeoutMs = parseInt((document.getElementById('admAiTimeout') || {}).value, 10);
+            const fallbackToOffline = Boolean((document.getElementById('admAiFallback') || {}).checked);
+
+            const r = AdminStore.saveAiConfig({
+                generateWebhookUrl, validateWebhookUrl, fetchTimeoutMs, fallbackToOffline
+            });
+            if (!r.ok) { toast(r.error || 'Erreur lors de la sauvegarde de l\'IA.', 'err'); return; }
+            renderTabContent();
+            toast('Configuration IA & Webhooks enregistrée ✔', 'ok');
+        },
+        resetAiSettings() {
+            if (!confirm('Rétablir la configuration IA par défaut ?')) return;
+            AdminStore.resetAiConfig();
+            renderTabContent();
+            toast('Configuration IA réinitialisée par défaut.', 'ok');
+        },
+        async testAiSettings() {
+            const resEl = document.getElementById('admAiTestResult');
+            if (resEl) resEl.innerHTML = '<div class="adm-note">Test de connectivité IA en cours...</div>';
+            const aiCfg = AdminStore.getAiConfig();
+            if (!aiCfg.generateWebhookUrl && !aiCfg.validateWebhookUrl) {
+                if (resEl) resEl.innerHTML = '<div class="adm-note ok">✓ Mode autonome actif : aucun webhook configuré, repli procédural 100% opérationnel.</div>';
+                return;
+            }
+            if (typeof AiProvider !== 'undefined' && typeof AiProvider.isConfigured === 'function') {
+                try {
+                    const start = Date.now();
+                    const testRes = await AiProvider.fetchQuestion('maths', 0, '6eme');
+                    const elapsed = Date.now() - start;
+                    if (resEl) {
+                        if (testRes && testRes.source === 'ai') {
+                            resEl.innerHTML = `<div class="adm-note ok">✓ Webhook IA opérationnel ! Question reçue en ${elapsed}ms.</div>`;
+                        } else {
+                            resEl.innerHTML = `<div class="adm-note warn">⚠️ Webhook IA non joignable (${elapsed}ms). Le repli hors-ligne prend le relais.</div>`;
+                        }
+                    }
+                } catch (e) {
+                    if (resEl) resEl.innerHTML = `<div class="adm-note warn">⚠️ Échec connexion IA : ${esc(e.message || String(e))} — Repli hors-ligne actif.</div>`;
+                }
+            } else {
+                if (resEl) resEl.innerHTML = '<div class="adm-note ok">✓ Configuration locale active (générateur procédural disponible).</div>';
+            }
+        },
+        exportConfig() {
+            const area = document.getElementById('admExportArea');
+            if (!area) return;
+            area.value = AdminStore.exportJson();
+            area.style.display = 'block';
+            toast('Configuration exportée (copiez le JSON ou téléchargez le fichier).', 'ok');
+        },
+        downloadConfig() {
+            const json = AdminStore.exportJson();
+            const blob = new Blob([json], { type: 'application/json' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'eduquest-admin-config.json';
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+            toast('Fichier téléchargé.', 'ok');
+        },
+        importConfig() {
+            const area = document.getElementById('admImportArea');
+            if (!area || !area.value.trim()) { toast('Collez d\'abord un JSON exporté.', 'err'); return; }
+            const r = AdminStore.importJson(area.value);
+            if (!r.ok) { toast(r.error || 'Import impossible.', 'err'); return; }
+            area.value = '';
+            S.subjectList = []; S.subjectId = null; S.levelsDraft = null;
+            renderPanel();
+            toast('Configuration importée ✔', 'ok');
+        },
+        resetAdminConfig() {
+            if (!confirm('Retirer TOUTES les personnalisations (niveaux, matières, leçons) ?')) return;
+            if (!confirm('Confirmez : cette action est irréversible.')) return;
+            AdminStore.resetAll();
+            S.subjectList = []; S.subjectId = null; S.levelsDraft = null;
+            renderPanel();
+            toast('Configuration administrateur réinitialisée.', 'ok');
+        },
+        resetProgress() {
+            if (!confirm('Effacer la progression, les XP, les pièces et les badges de cet appareil ? Les comptes sont conservés.')) return;
+            if (!confirm('Confirmez : cette action est irréversible.')) return;
+            const n = AdminStore.clearLocalGameData();
+            toast(n + ' donnée(s) de jeu supprimée(s).', 'ok');
+        },
+
+        /* ----- Crédits (v1.20) ----- */
+        creditsSave() {
+            const val = (id) => { const el = document.getElementById(id); return el ? el.value : ''; };
+            const r = AdminStore.saveCredits({
+                studioName: val('admCrStudio'),
+                tagline: val('admCrTagline'),
+                creatorName: val('admCrCreator'),
+                website: val('admCrWebsite'),
+                githubUrl: val('admCrGithub'),
+                contactEmail: val('admCrEmail'),
+                extraNote: val('admCrNote'),
+            });
+            if (!r.ok) { toast(r.error || 'Enregistrement impossible.', 'err'); return; }
+            renderTabContent();
+            toast('Crédits enregistrés ✔ — rechargez le jeu (F5) pour le pied de page.', 'ok');
+        },
+        creditsReset() {
+            if (!confirm('Restaurer les crédits par défaut ?')) return;
+            AdminStore.resetCredits();
+            renderTabContent();
+            toast('Crédits réinitialisés.', 'ok');
+        },
+        openCookieBanner() {
+            const zone = document.getElementById('admCrConsent');
+            if (zone) {
+                const st = window.EduCookies ? EduCookies.getConsent() : null;
+                zone.textContent = !st
+                    ? 'Aucun choix enregistré sur ce navigateur : le bandeau s\'affichera automatiquement à la prochaine visite.'
+                    : 'Choix enregistré : « ' + st.choice + ' »' + (st.ts ? ' le ' + fmtDate(st.ts) : '') + '.';
+            }
+            if (window.EduCookies) EduCookies.showBanner();
+            else toast('cookies.js n\'est pas chargé sur cette page.', 'err');
+        },
+
+        // Succès / Badges
+        setBadgeCategory(cat) {
+            S.badgeCategory = cat;
+            renderTabContent();
+        },
+        newBadge() {
+            S.editingBadge = { id: 'succes_' + Date.now(), name: '', desc: '', icon: '🏆', category: 'progression', condition: '', _isNew: true };
+            renderTabContent();
+        },
+        editBadge(id) {
+            const b = AdminStore.getBadge(id);
+            if (!b) return;
+            S.editingBadge = { ...b, _isNew: false };
+            renderTabContent();
+        },
+        cancelBadgeEdit() {
+            S.editingBadge = null;
+            renderTabContent();
+        },
+        saveBadge() {
+            const id = (document.getElementById('admBadgeId')?.value || '').trim();
+            const name = (document.getElementById('admBadgeName')?.value || '').trim();
+            const icon = (document.getElementById('admBadgeIcon')?.value || '').trim() || '🏆';
+            const cat = document.getElementById('admBadgeCat')?.value || 'progression';
+            const desc = (document.getElementById('admBadgeDesc')?.value || '').trim();
+            const condition = (document.getElementById('admBadgeCond')?.value || '').trim();
+            if (!id || !name) {
+                toast('Identifiant et nom requis.', 'err');
+                return;
+            }
+            AdminStore.saveBadge({ id, name, icon, category: cat, desc, condition });
+            S.editingBadge = null;
+            renderTabContent();
+            toast('Succès enregistré avec succès !', 'ok');
+        },
+        deleteBadge(id) {
+            if (!confirm(`Supprimer le succès « ${id} » ?`)) return;
+            AdminStore.deleteBadge(id);
+            renderTabContent();
+            toast('Succès supprimé.', 'ok');
+        },
+        toggleBadgeUnlock(id) {
+            const unlocked = DB.getBadges();
+            if (unlocked.includes(id)) {
+                DB.lockBadge(id);
+                toast(`Succès « ${id} » verrouillé.`, 'ok');
+            } else {
+                DB.unlockBadge(id);
+                toast(`Succès « ${id} » débloqué !`, 'ok');
+            }
+            renderTabContent();
+        },
+        unlockAllBadges() {
+            const all = AdminStore.getBadges().map(b => b.id);
+            DB.setBadges(all);
+            renderTabContent();
+            toast('Tous les succès ont été débloqués pour ce compte !', 'ok');
+        },
+        resetUserBadges() {
+            if (!confirm('Réinitialiser tous les succès de votre compte ?')) return;
+            DB.resetBadges();
+            renderTabContent();
+            toast('Succès de votre compte réinitialisés.', 'ok');
+        },
+        resetBadgesCatalog() {
+            if (!confirm('Rétablir la liste des succès par défaut ?')) return;
+            AdminStore.resetBadges();
+            renderTabContent();
+            toast('Catalogue de succès réinitialisé par défaut.', 'ok');
+        },
+    };
+
+    window.ADM = ADM;
+
+    /* ============================== HELPERS DE RENDU PARTIEL ============================== */
+
+    /** Re-rend uniquement la zone d'onglet (conserve la coquille). */
+    function renderTabContent() {
+        const zone = document.getElementById('admTab');
+        if (zone) zone.innerHTML = renderTab();
+        const modalWrap = document.getElementById('admModalWrap');
+        if (modalWrap) modalWrap.innerHTML = S.testModalQuestion ? renderTestModal() : '';
+        refreshStats();
+    }
+
+    /* ============================== DÉMARRAGE ============================== */
+
+    async function boot() {
+        // v1.21.0 — Protection par rôle 'admin' via db.js.
+        // 1) Vérifier si la session courante est admin
+        const currentUser = (typeof DB !== 'undefined') ? DB.getCurrentUser() : null;
+        if (currentUser && currentUser.role === 'admin') {
+            S.authed = true;
+        } else {
+            // 2) Pas de session admin — vérifier s'il existe des admins dans la base
+            let admins = [];
+            try {
+                const res = await DB.listLocalMembers();
+                admins = (res.ok && res.data) ? res.data.filter(u => u.role === 'admin') : [];
+            } catch { }
+            S.gate = admins.length === 0 ? 'setup' : 'login';
+            S.authed = false;
+            render();
+            return;
+        }
+
+        try {
+            await refreshMembers(); // pour l'onglet Membres (mode local)
+        } catch { /* accès localStorage possiblement bloqué */ }
+
+        const modeEl = document.getElementById('admMode');
+        if (modeEl) {
+            modeEl.textContent = DB.useApi ? 'Mode API SQL' : 'Mode local';
+            modeEl.className = 'adm-mode' + (DB.useApi ? ' api' : '');
+        }
+        render();
+    }
+
+    async function refreshMembers() {
+        const r = await DB.listLocalMembers();
+        S.members = r.ok ? (r.data || []) : [];
+        return S.members;
+    }
+
+    document.addEventListener('DOMContentLoaded', boot);
+})();

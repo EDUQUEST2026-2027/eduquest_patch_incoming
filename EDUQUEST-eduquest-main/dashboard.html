@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="fr">
+<!--
+  DASHBOARD.HTML — EDUQUEST v1.26.0
+  Tableau de bord : progression des 13 matières, quêtes journalières, boutique et quiz.
+-->
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mon tableau de bord — EDUQUEST</title>
+    <meta name="description" content="EDUQUEST — Explore les matières, réponds aux quiz et personnalise ton avatar.">
+    <meta name="theme-color" content="#0d1330">
+    <meta name="robots" content="index, follow">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="EDUQUEST">
+    <meta property="og:title" content="Mon tableau de bord — EDUQUEST">
+    <meta property="og:description" content="Progression, badges et avatars : tout ton avancement EDUQUEST au même endroit.">
+    <meta property="og:image" content="Image/logo.webp">
+    <meta name="twitter:card" content="summary_large_image">
+    <link rel="icon" type="image/webp" href="Image/logo.webp">
+    <link rel="stylesheet" href="css/global.css">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/quests.css">
+    <link rel="manifest" href="manifest.webmanifest">
+</head>
+
+<body>
+    <div class="background"></div>
+    <div class="stars" id="stars"></div>
+    <div class="clouds" id="clouds"></div>
+
+    <!-- Accès direct aux options -->
+    <a class="options-wheel floating" href="index.html#options" title="Options">⚙️</a>
+
+    <main class="container" id="dashboardPage" style="justify-content: flex-start; padding-top: 30px;">
+        <div id="dashboard-app" style="width: 100%; max-width: 960px;"></div>
+        <a class="dash-back-btn" href="index.html">← RETOUR AU MENU</a>
+    </main>
+
+    <footer>
+        <div class="footer">Version 1.26.0</div>
+        <div class="legal-links"><a href="legal.html">Mentions légales</a> · <a href="legal.html#cookies" onclick="window.dispatchEvent(new Event('eduquest:cookie-reopen'))">Cookies</a></div>
+    </footer>
+
+    <script src="js/db.js"></script>
+    <script src="js/admin-store.js"></script>
+    <script src="js/quiz-engine.js"></script>
+    <script src="js/question-bank.js"></script>
+    <script src="js/ai-provider.js"></script>
+    <script src="js/core/game-rules.js"></script>
+    <script src="js/core/quiz-session.js"></script>
+    <script src="js/features/daily-quests.js"></script>
+    <script src="js/app.js"></script>
+    <script src="js/cookies.js"></script>
+</body>
+</html>

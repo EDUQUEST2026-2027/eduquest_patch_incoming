@@ -1,0 +1,96 @@
+# EDUQUEST — llms.txt
+# Documentation destinée aux agents IA et assistants conversationnels.
+# Standard : https://llmstxt.org/
+# Dernière mise à jour : 2026-10-17
+
+> EDUQUEST est une application web éducative française de révision gamifiée
+> pour les élèves du collège et du lycée (6e → Terminale). 100 % front-end,
+> 100 % gratuit, sans publicité, sans traceur, fonctionnelle hors-ligne.
+
+## Identité
+
+- **Nom** : EDUQUEST
+- **Version** : 1.26.0
+- **Type** : Application web éducative (jeu de révision gamifié)
+- **Langue** : français (fr-FR)
+- **Public** : élèves (6e → Terminale), enseignants, établissements scolaires, familles
+- **Catégorie** : éducation / apprentissage gamifié / révision scolaire
+- **Accès** : 100 % gratuit, sans abonnement, sans publicité
+- **Installation** : aucune — fonctionne dans le navigateur moderne, 100 % hors-ligne après premier chargement (PWA / Service Worker)
+
+## Pitch
+
+**Court** : Le jeu de révision pour le collège et le lycée.
+
+**Complet** : EDUQUEST transforme les révisions en aventure : l'élève choisit
+sa matière, son niveau scolaire (6e → Terminale ou classe personnalisée), puis
+gravit des îles flottantes en répondant à des quiz variés (QCM avec choix mélangés à chaque essai,
+vrai/faux, réponse courte, texte à trous avec banque de mots et tolérance aux fautes de frappe,
+texte à choix avec menus déroulants, association). Bouton d'indice pédagogique 💡,
+3 variantes de questions par niveau avec renouvellement aléatoire à chaque échec. Séries de victoires (streak),
+combos en chaîne avec multiplicateur de score et d'XP dynamique (x1.0 à x2.5), potions consommables
+(Double XP, Bouclier d'Étoile), quêtes quotidiennes, succès, boutique de personnalisation
+(halos, avatars historiques, titres, thème astral d'origine offert, thèmes visuels, boosters)
+et mode chronométré maintiennent une motivation constante. 13 matières adaptées au cycle scolaire
+(Technologie au collège, NSI & Numérique et SES au lycée, Philosophie, EMC, Chimie dédiée), 100 niveaux par matière,
+îlots flottants vectoriels animés, barre de navigation mobile basse, contrôle des animations d'interface.
+Contenus, matières, niveaux d'étude autorisés, boutique, succès, crédits GitHub, configuration générale du site et IA
+ajustables via un panneau d'administration unifié et complet.
+
+## Mots-clés
+
+révision, jeu éducatif, quiz, collège, lycée, mathématiques, français, SVT,
+histoire, anglais, physique, chimie, philosophie, technologie, nsi, ses, numérique,
+apprentissage gamifié, streak, combo, éducation nationale, gratuit, pwa, offline
+
+## Pages publiques
+
+| Route | Description |
+|-------|-------------|
+| `index.html` | Accueil — point d'entrée, options de jeu (audio, mode chrono, éco-énergie), connexion/inscription |
+| `dashboard.html` | Tableau de bord élève : sélecteur de classe/niveau d'étude, quêtes journalières, matières, boutique, succès |
+| `map.html` | Carte de la matière : parcours des îles, niveaux de quiz (1 à 100), mode chrono optionnel |
+| `legal.html` | Mentions légales, politique de confidentialité et gestion des cookies |
+
+## Pages et outils internes
+
+| Route | Rôle |
+|-------|------|
+| `admin.html` | Panneau d'administration unifié (membres, niveaux, matières, cycles, leçons manuelles & procédurales, boutique, succès, réglages généraux & IA) |
+| `test.html` | Banc de tests automatisés autonome (68 tests, runner visuel, benchmark de performance et banc interactif en direct) |
+
+## Architecture technique
+
+| Fichier / Dossier | Rôle |
+|-------------------|------|
+| `js/app.js` | Contrôleur principal du jeu, gestionnaire d'état, HUD, boutique, confettis Canvas |
+| `js/db.js` | Couche d'accès aux données isolée par utilisateur (localStorage / API SQL optionnelle) |
+| `js/question-bank.js` | Banque de questions et générateur procédural déterministe (100 niveaux par matière) |
+| `js/quiz-engine.js` | Moteur de rendu et validation des 6 types de questions avec tolérance Levenshtein |
+| `js/core/game-rules.js` | Règles de jeu pures partagées (calcul étoiles, bouclier, combos, barèmes) |
+| `js/core/quiz-session.js` | Pipeline unifié de soumission des quiz et consommation des boosters |
+| `js/features/daily-quests.js` | Moteur de quêtes journalières déterministes (PRNG, tirage Fisher-Yates, minuit) |
+| `js/ai-provider.js` | Pont IA (Make webhook) avec repli transparent sur la banque locale |
+| `js/admin-store.js` | Configuration centrale du panneau d'administration (niveaux, matières, leçons, réglages site & IA) |
+| `js/admin.js` | Interface et moteur du panneau d'administration |
+| `js/cookies.js` | Bandeau de consentement RGPD/CNIL (mémorisation 12 mois) |
+| `css/global.css` | Design system, polices locales, univers spatial et utilitaires |
+| `css/style.css` | Styles spécifiques aux pages de jeu, modales et composants interactifs |
+| `css/quests.css` | Styles des cartes de quêtes journalières et conteneur de confettis |
+| `css/admin.css` | Thème glassmorphism pour le panneau d'administration |
+| `service-worker.js` | PWA et mise en cache hors-ligne intégrale (v1.26.0) |
+| `schema.sql` | Schéma relationnel complet SQL (tables utilisateurs, configuration site, IA, matières, leçons manuelles) |
+| `tests/` | Suite de 68 tests automatisés native Node.js (`node --test tests/*.test.js`) |
+
+## Données personnelles & Confidentialité
+
+- Aucune donnée personnelle n'est transmise à un serveur distant par défaut.
+- Tout est stocké localement dans le `localStorage` du navigateur.
+- Aucun cookie publicitaire, aucun traceur tiers, aucun profilage comportemental.
+- Bandeau de consentement conforme RGPD/CNIL à la première visite.
+- Page de référence : `legal.html`
+
+## Contact & Crédits
+
+L'éditeur et les crédits sont configurables via l'onglet « ✨ Crédits » du panneau
+d'administration (`admin.html`), puis répercutés dynamiquement sur `legal.html`.
